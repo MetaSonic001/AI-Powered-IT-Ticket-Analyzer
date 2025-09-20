@@ -68,7 +68,6 @@ export default function LoginPage() {
   }
 
   const handleDemoLogin = () => {
-    console.log("[v0] Demo login clicked")
     setIsLoading(true)
     setError("")
 
@@ -79,26 +78,10 @@ export default function LoginPage() {
       isDemo: true,
     }
 
-    console.log("[v0] Setting demo user in localStorage:", demoUser)
     localStorage.setItem("ticketflow_user", JSON.stringify(demoUser))
 
-    // Verify it was stored
-    const stored = localStorage.getItem("ticketflow_user")
-    console.log("[v0] Verified stored user:", stored)
-
-    // Try multiple redirect methods for reliability
-    setTimeout(() => {
-      console.log("[v0] Attempting redirect to dashboard")
-
-      // Try router first
-      router.push("/dashboard")
-
-      // Fallback to window.location after a short delay
-      setTimeout(() => {
-        console.log("[v0] Fallback redirect using window.location")
-        window.location.href = "/dashboard"
-      }, 100)
-    }, 500)
+    // Use window.location.href for immediate redirect
+    window.location.href = "/dashboard?welcome=true"
   }
 
   return (
