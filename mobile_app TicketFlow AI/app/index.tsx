@@ -6,7 +6,7 @@ export default function Index() {
     <View style={styles.container}>
       <Text style={styles.title}>TicketFlow AI</Text>
       <Text style={styles.subtitle}>Welcome to the app!</Text>
-      <Link href="/(auth)/" style={styles.link}>
+      <Link href="/(auth)" style={styles.link}>
         <Text style={styles.linkText}>Go to Auth</Text>
       </Link>
       <Link href="/(tabs)/dashboard" style={styles.link}>
