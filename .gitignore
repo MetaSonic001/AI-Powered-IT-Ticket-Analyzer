@@ -1,0 +1,202 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+.eggs/
+dist/
+build/
+.Python
+*.so
+
+# --- Virtual Envs ---
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-env/
+
+# --- FastAPI / Uvicorn ---
+*.db
+*.sqlite3
+
+# --- Logs & Debug ---
+*.log
+*.out
+*.err
+logs/
+debug.log
+
+# --- Data / Datasets ---
+data/
+datasets/
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.jsonl
+*.zip
+*.tar
+*.tar.gz
+*.h5
+*.pkl
+*.joblib
+
+# --- Models / AI ---
+models/
+checkpoints/
+saved_models/
+*.pt
+*.pth
+*.bin
+*.ckpt
+*.onnx
+*.pb
+*.tflite
+
+# Hugging Face & Transformers
+huggingface/
+transformers_cache/
+~/.cache/huggingface/
+~/.cache/torch/
+~/.cache/transformers/
+~/.cache/datasets/
+
+# Kaggle
+.kaggle/
+kaggle.json
+
+# --- Node/Frontend (if added later) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+out/
+build/
+
+# --- Docker ---
+*.pid
+*.seed
+docker-compose.override.yml
+
+# --- Env Files ---
+.env
+.env.local
+.env.*.local
+
+# --- IDEs / Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# --- Jupyter / Notebooks ---
+.ipynb_checkpoints/
+*.ipynb
+notebooks/
+jupyter_cache/
+
+# --- Misc ---
+.DS_Store
+Thumbs.db
+*.lock
+*.orig
+*.rej
+*.bak
+*.tmp
+*.backup
+*.swp
+*.swo
+*.class
+*.log
+*.out
+*.err
+*.aux
+*.toc
+
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Logs
+*.log
+logs/
+debug.log
+
+# Runtime files
+*.pid
+*.sock
+*.cache
+# Env files
+.env
+.env.*.local
+secrets.yaml
+
+# API keys, local credentials
+*.key
+*.pem
+*.json
+# Large models or datasets
+*.pt
+*.pth
+*.bin
+*.h5
+*.ckpt
+*.tflite
+
+# HuggingFace cache
+~/.cache/huggingface/
+hf_home/
+transformers_cache/
+
+# PyTorch / TensorFlow cache
+__pycache__/
+*.data
+*.index
+*.meta
+*.hdf5
+
+# FastAPI ML services temp
+*.onnx
+*.mlmodel
+*.safetensors
+# Docker / Weaviate data
+docker-compose.override.yml
+weaviate_data/
+weaviate_storage/
+*.wal
+*.snap
+*.idx
+
+# Any local SQLite / vector DB files
+*.db
+*.sqlite
+*.sqlite3
+# Docker
+*.dockerfile
+docker-compose.override.yml
+docker-compose.local.yml
+*.env
+*.log
+
+# Containers
+*.pid
+*.sock

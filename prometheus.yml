@@ -1,0 +1,17 @@
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'fastapi'
+    static_configs:
+      - targets: ['api:8000']
+    scrape_interval: 5s
+    metrics_path: '/metrics'
+    
+  - job_name: 'weaviate'
+    static_configs:
+      - targets: ['weaviate:8080']
+    scrape_interval: 15s
+    metrics_path: '/v1/meta'

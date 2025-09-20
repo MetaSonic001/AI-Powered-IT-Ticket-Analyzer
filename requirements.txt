@@ -1,0 +1,112 @@
+# FastAPI and Web Framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Async HTTP Client
+aiohttp
+httpx
+
+# Multi-Agent AI Framework
+crewai
+crewai-tools
+
+# LLM and ML Libraries
+transformers
+sentence-transformers
+accelerate
+
+# Ollama client
+ollama
+
+# External AI APIs
+groq
+google-generativeai
+openai
+
+# Vector Database
+weaviate-client
+
+# Data Processing
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+
+# Data Sources
+kaggle
+requests
+beautifulsoup4
+lxml
+
+# Web Scraping
+crawl4ai
+playwright
+selenium
+
+# Text Processing
+nltk
+spacy
+textblob
+
+# Database (Optional)
+sqlalchemy
+alembic
+asyncpg
+psycopg2-binary
+
+# Caching
+redis
+diskcache
+
+# Utilities
+python-dotenv
+python-multipart
+email-validator
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Monitoring and Logging
+loguru
+structlog
+
+# Testing
+pytest
+pytest-asyncio
+pytest-mock
+httpx
+faker
+
+# Code Quality
+black
+isort
+flake8
+mypy
+
+# Documentation
+mkdocs
+mkdocs-material
+
+# Performance
+ujson
+orjson
+
+# File Processing
+python-magic
+pillow
+PyPDF2
+python-docx
+
+# Async Task Queue
+celery
+redis
+
+# Environment Management
+python-decouple
+
+# Development Tools (Optional)
+jupyter
+ipython
+notebook
