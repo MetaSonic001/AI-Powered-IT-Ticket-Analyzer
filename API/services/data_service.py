@@ -1,6 +1,7 @@
 """
 Data Service - Dataset Management, Analytics, and Data Processing
 Handles Kaggle datasets, web scraping, data preprocessing, and analytics
+UPDATED FOR CRAWL4AI v0.7.x
 """
 
 import asyncio
@@ -25,8 +26,9 @@ try:
 except ImportError:
     KAGGLE_AVAILABLE = False
 
+# FIXED: Updated Crawl4AI imports for v0.7.x
 try:
-    from crawl4ai import WebCrawler
+    from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
     CRAWL4AI_AVAILABLE = True
 except ImportError:
     CRAWL4AI_AVAILABLE = False
@@ -38,7 +40,6 @@ try:
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
-
 
 import os
 
@@ -62,6 +63,7 @@ class DataService:
         self.analytics_cache = {}
         self.processing_stats = {}
         self.initialized = False
+        self.crawler = None  # Will hold AsyncWebCrawler instance
         
     async def initialize(self):
         """Initialize data service"""
@@ -106,19 +108,18 @@ class DataService:
             logger.warning(f"Kaggle setup failed: {str(e)}")
     
     async def _setup_crawler(self):
-        """Setup web crawler"""
+        """Setup web crawler using new Crawl4AI v0.7.x API"""
         if not CRAWL4AI_AVAILABLE:
             logger.warning("Crawl4AI not available, using basic web scraping")
             return
         
         try:
-            # Initialize crawler
-            self.crawler = WebCrawler(verbose=False)
-            await self.crawler.astart()
-            logger.info("✅ Web crawler initialized")
+            # FIXED: Use new v0.7.x API - no need for .astart() or instantiation here
+            # We'll create AsyncWebCrawler instances in context managers when needed
+            logger.info("✅ Crawl4AI v0.7.x support initialized")
             
         except Exception as e:
-            logger.warning(f"Web crawler setup failed: {str(e)}")
+            logger.warning(f"Crawl4AI setup failed: {str(e)}")
     
     async def load_initial_datasets(self):
         """Load initial datasets from various sources"""
@@ -618,7 +619,7 @@ class DataService:
         logger.info("✅ Loaded IT documentation articles")
     
     async def scrape_web_content(self, urls: List[str], source_type: str = "documentation") -> List[Dict[str, Any]]:
-        """Scrape content from web URLs"""
+        """Scrape content from web URLs using Crawl4AI v0.7.x"""
         
         if not urls:
             return []
@@ -627,8 +628,8 @@ class DataService:
         
         for url in urls:
             try:
-                if hasattr(self, 'crawler') and CRAWL4AI_AVAILABLE:
-                    content = await self._scrape_with_crawl4ai(url)
+                if CRAWL4AI_AVAILABLE:
+                    content = await self._scrape_with_crawl4ai_v7(url)
                 else:
                     content = await self._scrape_with_basic_http(url)
                 
@@ -648,24 +649,34 @@ class DataService:
         logger.info(f"✅ Scraped {len(scraped_content)} web pages")
         return scraped_content
     
-    async def _scrape_with_crawl4ai(self, url: str) -> Optional[Dict[str, Any]]:
-        """Scrape content using Crawl4AI"""
+    async def _scrape_with_crawl4ai_v7(self, url: str) -> Optional[Dict[str, Any]]:
+        """FIXED: Scrape content using Crawl4AI v0.7.x API"""
         
         try:
-            result = await self.crawler.arun(url=url)
+            # Use the new v0.7.x context manager approach
+            browser_config = BrowserConfig(headless=True, java_script_enabled=True)
+            crawler_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
             
-            if result.success:
-                return {
-                    "title": result.metadata.get("title", ""),
-                    "content": result.markdown,
-                    "metadata": result.metadata
-                }
-            else:
-                logger.warning(f"Failed to crawl {url}: {result.error_message}")
-                return None
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                result = await crawler.arun(url=url, config=crawler_config)
                 
+                if result.success:
+                    # Extract title from metadata if available
+                    title = "Web Content"
+                    if hasattr(result, 'metadata') and result.metadata:
+                        title = result.metadata.get('title', 'Web Content')
+                    
+                    return {
+                        "title": title,
+                        "content": result.markdown.raw_markdown if hasattr(result.markdown, 'raw_markdown') else str(result.markdown),
+                        "metadata": result.metadata if hasattr(result, 'metadata') else {}
+                    }
+                else:
+                    logger.warning(f"Failed to crawl {url}: {result.error_message}")
+                    return None
+                    
         except Exception as e:
-            logger.error(f"Crawl4AI error for {url}: {str(e)}")
+            logger.error(f"Crawl4AI v0.7.x error for {url}: {str(e)}")
             return None
     
     async def _scrape_with_basic_http(self, url: str) -> Optional[Dict[str, Any]]:
@@ -962,7 +973,7 @@ class DataService:
         self.datasets_cache.clear()
         self.analytics_cache.clear()
         self.processing_stats.clear()
-        logger.info("✅ All caches cleared")
+        logger.info("All caches cleared")
     
     async def get_processing_stats(self) -> Dict[str, Any]:
         """Get data processing statistics"""
@@ -1009,5 +1020,28 @@ class DataService:
         else:
             raise ValueError(f"Unsupported export format: {format}")
         
-        logger.info(f"✅ Exported {len(knowledge_items)} items to {export_path}")
+        logger.info(f"Exported {len(knowledge_items)} items to {export_path}")
         return str(export_path)
+    
+    async def close(self):
+        """Close the data service and cleanup resources"""
+        try:
+            # No longer need to explicitly close crawler in v0.7.x
+            # as we use context managers
+            self.initialized = False
+            logger.info("Data service closed")
+        except Exception as e:
+            logger.error(f"Error closing data service: {str(e)}")
+            
+    async def health_check(self) -> Dict[str, Any]:
+        """Check health of data service"""
+        return {
+            "initialized": self.initialized,
+            "cache_size": len(self.datasets_cache.get("knowledge_cache", [])),
+            "available_features": {
+                "kaggle": KAGGLE_AVAILABLE,
+                "crawl4ai": CRAWL4AI_AVAILABLE,
+                "sklearn": SKLEARN_AVAILABLE
+            },
+            "processing_stats_count": len(self.processing_stats)
+        }

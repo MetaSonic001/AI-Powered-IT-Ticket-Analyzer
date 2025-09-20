@@ -38,7 +38,6 @@ datasets/
 *.tsv
 *.parquet
 *.feather
-*.jsonl
 *.zip
 *.tar
 *.tar.gz
@@ -70,14 +69,6 @@ transformers_cache/
 .kaggle/
 kaggle.json
 
-# --- Node/Frontend (if added later) ---
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.next/
-out/
-build/
 
 # --- Docker ---
 *.pid
@@ -106,7 +97,6 @@ jupyter_cache/
 # --- Misc ---
 .DS_Store
 Thumbs.db
-*.lock
 *.orig
 *.rej
 *.bak
@@ -153,7 +143,6 @@ secrets.yaml
 # API keys, local credentials
 *.key
 *.pem
-*.json
 # Large models or datasets
 *.pt
 *.pth
