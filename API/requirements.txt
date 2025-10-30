@@ -8,9 +8,10 @@ pydantic-settings
 aiohttp
 httpx
 
-# Multi-Agent AI Framework
-crewai
-crewai-tools
+# Multi-Agent AI Framework (LangGraph replaces CrewAI)
+langgraph
+langchain-core
+langchain-groq
 
 # LLM and ML Libraries
 transformers
@@ -20,10 +21,9 @@ accelerate
 # Ollama client
 ollama
 
-# External AI APIs
+# External AI APIs (Groq only - no OpenAI)
 groq
 google-generativeai
-openai
 
 # Vector Database
 weaviate-client

@@ -8,7 +8,8 @@ import main
 from core.config import reload_settings
 
 
-class DummyCrew:
+class DummyWorkflow:
+    """Mock WorkflowManager for testing"""
     async def classify_ticket(self, title, description):
         return {
             "category": "Network Issues",
@@ -27,22 +28,43 @@ class DummyCrew:
             },
             "priority_prediction": {
                 "priority": "High",
-                "confidence": 0.9
+                "confidence": 0.9,
+                "estimated_resolution_hours": 4
             },
             "recommended_solutions": [],
-            "processing_time_ms": 123.4
+            "processing_time_ms": 123.4,
+            "status": "completed",
+            "analysis_metadata": {
+                "workflow": "langgraph",
+                "model_used": "llama-3.1-8b-instant",
+                "cost_optimization": "enabled"
+            }
         }
 
     async def predict_priority(self, title, description, requester_info=None):
         return {
             "priority": "High",
             "confidence": 0.9,
-            "eta_hours": 4
+            "estimated_resolution_hours": 4,
+            "factors": ["Keyword analysis"]
         }
 
     async def process_bulk_tickets(self, tickets, task_id: str, options=None):
         # Simulate background processing
         return True
+    
+    def get_performance_stats(self):
+        return {
+            "agents": {
+                "classifier": {"total": 10, "correct": 9, "accuracy": 0.9},
+                "priority_predictor": {"total": 10, "correct": 8, "accuracy": 0.8}
+            },
+            "total_predictions": 20,
+            "predictions_with_feedback": 17
+        }
+    
+    def log_feedback(self, ticket_id, agent, actual, feedback_source="user"):
+        pass
 
 
 class DummyKnowledge:
@@ -114,7 +136,7 @@ async def test_classify_ticket_direct_call():
         title="Cannot connect to WiFi",
         description="User cannot connect to corporate WiFi when on site."
     )
-    dummy = DummyCrew()
+    dummy = DummyWorkflow()
     res = await main.classify_ticket(req, dummy)
     assert isinstance(res, dict)
     assert res.get("category") == "Network Issues"
@@ -150,7 +172,7 @@ async def test_get_dashboard_data_direct_call():
 @pytest.mark.asyncio
 async def test_predict_priority_direct_call():
     req = TicketAnalysisRequest(title="Outlook not sending emails", description="User cannot send emails.")
-    dummy = DummyCrew()
+    dummy = DummyWorkflow()
     res = await main.predict_priority(req, dummy)
     assert res.get("priority") == "High"
 
@@ -159,7 +181,7 @@ async def test_predict_priority_direct_call():
 async def test_bulk_process_direct_call():
     req = BulkTicketRequest(tickets=[{"title": "t1", "description": "d1"}], options=None)
     bg = BackgroundTasks()
-    dummy = DummyCrew()
+    dummy = DummyWorkflow()
     res = await main.bulk_process_tickets(req, bg, dummy)
     assert "task_id" in res and res["status"] == "processing"
 

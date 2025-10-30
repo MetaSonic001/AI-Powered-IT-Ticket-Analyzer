@@ -8,10 +8,13 @@ Enterprise-grade AI-powered system for automated IT ticket analysis, classificat
 
 ## 🌟 Features
 
-- **🤖 Multi-Agent AI System**: Using CrewAI for specialized ticket analysis agents
-- **📊 Multiple LLM Support**: Ollama, Hugging Face, Groq, Gemini with automatic fallbacks
+- **🤖 Multi-Agent AI System**: Using LangGraph for specialized ticket analysis agents with adaptive routing
+- **📊 Multiple LLM Support**: Groq (primary), Gemini, Ollama with automatic fallbacks
 - **🔍 Vector Search**: Weaviate (Docker) or ChromaDB (local) semantic search
-- **📈 Real-time Analytics**: Comprehensive dashboard with ticket trends and insights  
+- **📈 Real-time Analytics**: Comprehensive dashboard with ticket trends and insights
+- **👤 Human-in-the-Loop**: Automatic review flagging for low-confidence predictions
+- **📊 Performance Tracking**: Agent accuracy monitoring and ROI measurement
+- **💰 Cost-Aware**: Smart model selection based on ticket complexity  
 - **🔧 Auto-Classification**: Smart categorization of IT tickets into predefined categories
 - **⚡ Priority Prediction**: Intelligent priority assignment with resolution time estimates
 - **💡 Solution Recommendations**: RAG-powered solution suggestions from knowledge base
@@ -24,11 +27,12 @@ Enterprise-grade AI-powered system for automated IT ticket analysis, classificat
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   FastAPI API   │    │  Multi-Agent    │    │  Knowledge Base │
-│                 │────│   CrewAI        │────│ (Weaviate/ChromaDB) │
+│                 │────│   LangGraph     │────│ (Weaviate/ChromaDB) │
 │  - REST Endpoints│    │                 │    │                 │
 │  - Async Support│    │ - Classifier    │    │ - Vector Search │
 │  - Validation   │    │ - Prioritizer   │    │ - Semantic RAG  │
 │  - Analytics    │    │ - Recommender   │    │ - Auto-indexing │
+│  - HITL Review  │    │ - QA Reviewer   │    │ - Ledger Track  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          └───────────────────────┼───────────────────────┘
@@ -36,10 +40,11 @@ Enterprise-grade AI-powered system for automated IT ticket analysis, classificat
                     ┌─────────────────┐
                     │  Model Service  │
                     │                 │
+                    │ - Groq (primary)│
+                    │ - Gemini        │
                     │ - Ollama        │
-                    │ - Hugging Face  │
-                    │ - Groq/Gemini   │
                     │ - Auto-fallback │
+                    │ - Cost-aware    │
                     └─────────────────┘
 ```
 
@@ -275,9 +280,9 @@ Let's walk through a complete example: **A user submits a ticket about email syn
 - Validates input using Pydantic models (`TicketAnalysisRequest`)
 - Passes to `CrewManager` for processing
 
-**2.2 Multi-Agent Processing (`agents/crew_manager.py`)**
+**2.2 Multi-Agent Processing (`agents/workflow_manager.py`)**
 
-The system now orchestrates 4 specialized AI agents working sequentially:
+The system now orchestrates 4 specialized AI agents working with adaptive routing using LangGraph StateGraph:
 
 **Agent 1: Ticket Classifier**
 
@@ -454,9 +459,9 @@ For external APIs (Groq/Gemini), the system automatically:
 
 ### 🔄 Fallback Behavior
 
-**If CrewAI is unavailable:**
+**If LangGraph workflow is unavailable:**
 
-- System uses direct ModelService calls
+- System uses direct Groq calls for classification and priority
 - Same functionality, slightly less sophisticated
 - All endpoints remain operational
 
@@ -590,6 +595,8 @@ The system uses these Ollama models (automatically pulled):
 - `POST /api/v1/solutions/recommend` - Get solution recommendations
 - `GET /api/v1/solutions/search` - Search knowledge base
 - `POST /api/v1/knowledge/ingest` - Ingest new knowledge
+- `GET /api/v1/knowledge/ledger` - Ledger stats (optional entries with filters)
+- `GET /api/v1/debug/knowledge-base-status` - Quick KB health + sample document
 
 ### Analytics & Monitoring
 
@@ -671,6 +678,21 @@ Notes:
 - Kaggle downloads need the Kaggle CLI configured (set `KAGGLE_USERNAME` and `KAGGLE_KEY`).
 - Embeddings are generated with `sentence-transformers/all-MiniLM-L6-v2` and saved via the API’s `KnowledgeService`.
 
+### Seed the knowledge base quickly (recommended for local dev)
+
+To avoid empty recommendations on a fresh setup, seed a few common solutions:
+
+Windows (cmd.exe):
+
+```bat
+REM From repository root
+python -m API.scripts.ingest_solutions
+```
+
+This inserts several troubleshooting guides (email sync, Wi‑Fi, VPN, printing, AD lockouts, Teams install) into the persistent ChromaDB store so RAG results are available immediately.
+
+Note: The solutions endpoint now defaults to a similarity threshold of 0.4. You can pass a higher `min_similarity` in the request if you want stricter matches.
+
 ### Auto-sync on API startup
 
 When the API starts, it automatically scans common data folders and ingests new documents into the vector store. A dedicated SQLite ledger keeps a record of what was synced to avoid duplicates and to track removals.
@@ -714,11 +736,23 @@ python scripts/sync_local_data.py --folders data\kaggle data\scraped --category 
 
 This sync uses deterministic IDs (based on file path + content) to avoid duplicates when re-running.
 
-## 🤖 Multi-Agent Architecture
+## 🤖 LangGraph Multi-Agent Workflow
 
-### Specialized Agents
+### Intelligent Workflow Orchestration
 
-The system uses a multi-agent approach with CrewAI for comprehensive ticket analysis. When CrewAI is available, four specialized agents work together:
+The system uses LangGraph StateGraph for advanced multi-agent orchestration with adaptive routing, HITL, and performance tracking.
+
+**Key Advantages:**
+
+1. **Adaptive Routing**: High-confidence simple tickets skip agents (⚡ 30-40% faster)
+2. **Human-in-the-Loop**: Low-confidence tickets flagged for review (QA score < 0.75)
+3. **Performance Tracking**: Real-time agent accuracy and ROI measurement
+4. **Cost-Aware**: Automatic model selection based on ticket complexity
+5. **Groq-Only**: Uses Groq Cloud exclusively (no OpenAI dependency)
+
+### The Four Specialized Agents
+
+When the LangGraph workflow is active, four specialized agents collaborate:
 
 1. **Ticket Classifier Agent**
    - Categorizes tickets into predefined categories
@@ -744,7 +778,31 @@ The system uses a multi-agent approach with CrewAI for comprehensive ticket anal
 
 ### Fallback Mode
 
-When CrewAI is not available or fails, the system automatically falls back to direct model service calls, ensuring the API remains operational. All endpoint functionality (classification, priority prediction, solution recommendation) works in both modes.
+When LangGraph is not available or fails, the system automatically falls back to direct Groq calls, ensuring the API remains operational. All endpoint functionality (classification, priority prediction, solution recommendation) works in both modes.
+
+### New Endpoints
+
+**Performance Tracking:**
+- `GET /api/v1/agents/performance` - Get agent accuracy stats
+- `POST /api/v1/agents/feedback` - Log actual outcomes for ROI tracking
+
+**Human Review:**
+- `GET /api/v1/review/{ticket_id}` - View draft analysis for low-confidence tickets
+
+**Example - Track Agent Accuracy:**
+```python
+# After ticket resolution, log actual outcome
+httpx.post("/api/v1/agents/feedback", json={
+    "ticket_id": "abc123",
+    "agent": "priority_predictor",
+    "actual": "High",
+    "feedback_source": "resolution"
+})
+
+# Check accuracy
+stats = httpx.get("/api/v1/agents/performance").json()
+print(f"Classifier accuracy: {stats['agents']['classifier']['accuracy']:.2%}")
+```
 
 ## 🧠 LLM Provider Selection & Token Optimization
 
@@ -823,6 +881,17 @@ Run the test suite to verify installation:
 python scripts/test_installation.py
 ```
 
+### Manual endpoint tester (interactive)
+
+A convenient interactive script exercises common endpoints and validates responses:
+
+```bat
+REM From repository root while the API is running on port 8000
+python API\test_api_runner.py
+```
+
+Use the numbered menu to run individual tests or choose 0 to run them all.
+
 ### Developer tests (pytest)
 
 There is a small pytest suite in `API/tests/` that exercises core endpoints using lightweight mocks (it calls the endpoint functions directly and avoids starting the full FastAPI lifespan). To run the tests:
@@ -873,4 +942,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ using FastAPI, CrewAI, Weaviate, and modern AI/ML technologies**
+**Built with ❤️ using FastAPI, LangGraph, Groq, ChromaDB, and modern AI/ML technologies**
+
+**See [LANGGRAPH_MIGRATION.md](LANGGRAPH_MIGRATION.md) for full details on the LangGraph upgrade and new features.**

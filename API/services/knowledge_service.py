@@ -490,32 +490,61 @@ class KnowledgeService:
         max_results: int = 5,
         min_similarity: float = 0.7
     ) -> List[Dict[str, Any]]:
-        """Get solution recommendations for a query"""
-        
+        """Get solution recommendations for a query with robust fallbacks"""
+
+        # Attempt 1: With provided category and given threshold
         search_results = await self.search(
             query=query,
             category=category,
             limit=max_results * 2,
             min_similarity=min_similarity
         )
-        
-        recommendations = []
+
+        # Attempt 2: If empty, try without category filter
+        if not search_results:
+            search_results = await self.search(
+                query=query,
+                category=None,
+                limit=max_results * 2,
+                min_similarity=max(min_similarity * 0.8, 0.4)
+            )
+
+        # Attempt 3: If still empty, lower threshold further
+        if not search_results:
+            search_results = await self.search(
+                query=query,
+                category=None,
+                limit=max_results * 2,
+                min_similarity=0.3
+            )
+
+        recommendations: List[Dict[str, Any]] = []
         for result in search_results[:max_results]:
             metadata = result.get("metadata", {})
-            steps = metadata.get("steps", metadata.get("resolution_steps", []))
-            
+            steps_raw = metadata.get("steps", metadata.get("resolution_steps", []))
+            # Parse steps if they were stored as JSON string
+            steps: List[str]
+            if isinstance(steps_raw, str):
+                try:
+                    parsed = json.loads(steps_raw)
+                    steps = parsed if isinstance(parsed, list) else [str(parsed)]
+                except Exception:
+                    steps = [steps_raw]
+            else:
+                steps = steps_raw or []
+
             recommendation = {
-                "solution_id": result["doc_id"],
-                "title": result["title"],
-                "description": result["content_snippet"],
+                "solution_id": result.get("doc_id", str(uuid.uuid4())),
+                "title": result.get("title", "Untitled Solution"),
+                "description": result.get("content_snippet", ""),
                 "category": result.get("category"),
-                "steps": steps,
-                "similarity_score": result["score"],
+                "steps": steps or ["Refer to the linked knowledge base article for detailed steps"],
+                "similarity_score": float(result.get("score", 0.0)),
                 "source": result.get("source", "knowledge_base"),
                 "metadata": metadata
             }
             recommendations.append(recommendation)
-        
+
         logger.info(f"Generated {len(recommendations)} recommendations for: {query[:50]}...")
         return recommendations
     

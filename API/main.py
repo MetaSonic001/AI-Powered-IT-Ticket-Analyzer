@@ -23,7 +23,7 @@ from core.models import (
     KnowledgeIngestRequest,
     DashboardResponse
 )
-from agents.crew_manager import CrewManager
+from agents.workflow_manager import WorkflowManager
 from services.knowledge_service import KnowledgeService
 from services.data_service import DataService
 from services.model_service import ModelService
@@ -35,7 +35,7 @@ from scripts.datasets import ingest_folder, Embedder
 logger = setup_logger(__name__)
 
 # Global services
-crew_manager: CrewManager = None
+workflow_manager: WorkflowManager = None
 knowledge_service: KnowledgeService = None
 data_service: DataService = None
 model_service: ModelService = None
@@ -43,7 +43,7 @@ model_service: ModelService = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events"""
-    global crew_manager, knowledge_service, data_service, model_service
+    global workflow_manager, knowledge_service, data_service, model_service
     
     logger.info("🚀 Starting IT Ticket Analyzer API...")
     
@@ -62,8 +62,8 @@ async def lifespan(app: FastAPI):
         data_service = DataService(settings)
         await data_service.initialize()
         
-        crew_manager = CrewManager(settings, model_service, knowledge_service)
-        await crew_manager.initialize()
+        workflow_manager = WorkflowManager(settings, model_service, knowledge_service)
+        await workflow_manager.initialize()
         
         # Start background auto-sync of local data folders into vector DB (idempotent via ledger)
         async def _auto_sync_data_folders():
@@ -141,10 +141,10 @@ app.add_middleware(
 )
 
 # Dependency to get services
-async def get_crew_manager() -> CrewManager:
-    if not crew_manager:
-        raise HTTPException(status_code=503, detail="Crew manager not initialized")
-    return crew_manager
+async def get_workflow_manager() -> WorkflowManager:
+    if not workflow_manager:
+        raise HTTPException(status_code=503, detail="Workflow manager not initialized")
+    return workflow_manager
 
 async def get_knowledge_service() -> KnowledgeService:
     if not knowledge_service:
@@ -185,6 +185,99 @@ async def get_ledger(
     return resp
 
 
+# Knowledge base debug/status endpoint
+@app.get("/api/v1/debug/knowledge-base-status")
+async def knowledge_base_status(knowledge: KnowledgeService = Depends(get_knowledge_service)):
+    """Return debug info about the knowledge base so we can quickly verify content exists."""
+    try:
+        health = await knowledge.health_check()
+        count = await knowledge.get_document_count()
+
+        backend = health.get("backend")
+        chroma_info = None
+        weaviate_info = None
+        sample = None
+
+        # Try to fetch a sample document depending on backend
+        if getattr(knowledge, "chroma_collection", None) is not None:
+            try:
+                # Chroma collections support .get with a limit
+                raw = knowledge.chroma_collection.get(limit=1)
+                if raw and raw.get("ids"):
+                    ids = raw.get("ids", [])
+                    metadatas = raw.get("metadatas", [])
+                    documents = raw.get("documents", [])
+
+                    # Handle both shapes: flat lists (get) and list-of-lists (query)
+                    id0 = ids[0] if ids else None
+                    meta0 = None
+                    doc0 = None
+                    if metadatas:
+                        if isinstance(metadatas[0], dict):
+                            meta0 = metadatas[0]
+                        elif isinstance(metadatas[0], list) and metadatas[0]:
+                            meta0 = metadatas[0][0]
+                    if documents:
+                        if isinstance(documents[0], str):
+                            doc0 = documents[0]
+                        elif isinstance(documents[0], list) and documents[0]:
+                            doc0 = documents[0][0]
+
+                    sample = {
+                        "id": id0,
+                        "title": (meta0 or {}).get("title"),
+                        "category": (meta0 or {}).get("category"),
+                        "snippet": (doc0 or "")[:200]
+                    }
+            except Exception:
+                # As a fallback, try searching anything with min_similarity=0
+                try:
+                    srch = await knowledge.search(query="sample", category=None, limit=1, min_similarity=0.0)
+                    if srch:
+                        r0 = srch[0]
+                        sample = {
+                            "id": r0.get("doc_id"),
+                            "title": r0.get("title"),
+                            "category": r0.get("category"),
+                            "snippet": r0.get("content_snippet")[:200] if r0.get("content_snippet") else None
+                        }
+                except Exception:
+                    pass
+            chroma_info = {
+                "collection_name": getattr(knowledge.chroma_collection, "name", "it_knowledge_base"),
+                "persist_dir": str(getattr(knowledge, "_chroma_path", "./data/chroma_db"))
+            }
+        elif getattr(knowledge, "client", None) and getattr(knowledge, "collection", None):
+            # Weaviate info
+            weaviate_info = {
+                "class_name": getattr(get_settings(), 'weaviate_class_name', 'ITKnowledge'),
+                "host": getattr(get_settings(), 'weaviate_host', 'http://localhost:8080')
+            }
+            try:
+                srch = await knowledge.search(query="sample", category=None, limit=1, min_similarity=0.0)
+                if srch:
+                    r0 = srch[0]
+                    sample = {
+                        "id": r0.get("doc_id"),
+                        "title": r0.get("title"),
+                        "category": r0.get("category"),
+                        "snippet": r0.get("content_snippet")[:200] if r0.get("content_snippet") else None
+                    }
+            except Exception:
+                pass
+
+        return {
+            "backend": backend,
+            "document_count": count,
+            "chroma": chroma_info,
+            "weaviate": weaviate_info,
+            "sample": sample,
+        }
+    except Exception as e:
+        logger.error(f"KB status failed: {e}")
+        raise HTTPException(status_code=500, detail=f"KB status failed: {str(e)}")
+
+
 # Root endpoint
 @app.get("/")
 async def root():
@@ -202,7 +295,7 @@ async def health_check():
     """Health check endpoint"""
     try:
         services_status = {
-            "crew_manager": crew_manager is not None,
+            "workflow_manager": workflow_manager is not None,
             "knowledge_service": knowledge_service is not None and await knowledge_service.health_check(),
             "data_service": data_service is not None,
             "model_service": model_service is not None and await model_service.health_check()
@@ -233,16 +326,16 @@ async def health_check():
 @app.post("/api/v1/tickets/analyze", response_model=TicketAnalysisResponse)
 async def analyze_ticket(
     request: TicketAnalysisRequest,
-    crew: CrewManager = Depends(get_crew_manager)
+    workflow: WorkflowManager = Depends(get_workflow_manager)
 ):
     """
-    Comprehensive ticket analysis using multi-agent system
+    Comprehensive ticket analysis using LangGraph multi-agent workflow
     """
     try:
         logger.info(f"Analyzing ticket: {request.title[:50]}...")
         
-        # Run multi-agent analysis
-        analysis_result = await crew.analyze_ticket(
+        # Run LangGraph workflow analysis
+        analysis_result = await workflow.analyze_ticket(
             title=request.title,
             description=request.description,
             requester_info=request.requester_info,
@@ -261,39 +354,70 @@ async def analyze_ticket(
 @app.post("/api/v1/tickets/classify")
 async def classify_ticket(
     request: TicketAnalysisRequest,
-    crew: CrewManager = Depends(get_crew_manager)
+    workflow: WorkflowManager = Depends(get_workflow_manager)
 ):
     """
     Classify ticket category and subcategory only
     """
     try:
-        classification = await crew.classify_ticket(
+        classification = await workflow.classify_ticket(
             title=request.title,
             description=request.description
         )
+
+        # Defensive validation: ensure all required fields are present
+        defaults = {
+            "category": "General Support",
+            "subcategory": "Needs Review",
+            "confidence": 0.3,
+            "reasoning": "Incomplete classification result"
+        }
+        for k, v in defaults.items():
+            if k not in classification or classification.get(k) in (None, ""):
+                classification[k] = v
+
+        # Normalize confidence to float
+        try:
+            classification["confidence"] = float(classification.get("confidence", 0.3))
+        except Exception:
+            classification["confidence"] = 0.3
         
+        # Return structured response per guide
         return {
-            "category": classification["category"],
-            "subcategory": classification["subcategory"],
-            "confidence": classification["confidence"],
-            "reasoning": classification.get("reasoning", "")
+            "classification": classification,
+            "ticket_info": {
+                "title": request.title,
+                "description": request.description
+            }
         }
         
     except Exception as e:
         logger.error(f"Ticket classification failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
+        # Return safe fallback instead of raw 500 where possible
+        return {
+            "classification": {
+                "category": "General Support",
+                "subcategory": "System Error",
+                "confidence": 0.2,
+                "reasoning": f"Classification system error: {str(e)}"
+            },
+            "ticket_info": {
+                "title": request.title,
+                "description": request.description
+            }
+        }
 
 # Priority prediction
 @app.post("/api/v1/tickets/predict-priority")
 async def predict_priority(
     request: TicketAnalysisRequest,
-    crew: CrewManager = Depends(get_crew_manager)
+    workflow: WorkflowManager = Depends(get_workflow_manager)
 ):
     """
     Predict ticket priority and estimated resolution time
     """
     try:
-        priority_info = await crew.predict_priority(
+        priority_info = await workflow.predict_priority(
             title=request.title,
             description=request.description,
             requester_info=request.requester_info
@@ -310,7 +434,7 @@ async def predict_priority(
 async def bulk_process_tickets(
     request: BulkTicketRequest,
     background_tasks: BackgroundTasks,
-    crew: CrewManager = Depends(get_crew_manager)
+    workflow: WorkflowManager = Depends(get_workflow_manager)
 ):
     """
     Process multiple tickets in batch
@@ -320,7 +444,7 @@ async def bulk_process_tickets(
         task_id = f"bulk_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         
         background_tasks.add_task(
-            crew.process_bulk_tickets,
+            workflow.process_bulk_tickets,
             tickets=request.tickets,
             task_id=task_id,
             options=request.options
@@ -350,7 +474,7 @@ async def recommend_solutions(
             query=request.query,
             category=request.category,
             max_results=request.max_results or 5,
-            min_similarity=request.min_similarity or 0.7
+            min_similarity=request.min_similarity or 0.4
         )
         
         return {
@@ -491,6 +615,63 @@ async def reload_models():
     except Exception as e:
         logger.error(f"Model reload failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Model reload failed: {str(e)}")
+
+# Agent performance tracking endpoints
+@app.get("/api/v1/agents/performance")
+async def get_agent_performance(
+    workflow: WorkflowManager = Depends(get_workflow_manager)
+):
+    """Get performance statistics for all agents"""
+    try:
+        stats = workflow.get_performance_stats()
+        return {
+            "performance_stats": stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Performance stats retrieval failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get performance stats: {str(e)}")
+
+@app.post("/api/v1/agents/feedback")
+async def log_agent_feedback(
+    ticket_id: str,
+    agent: str,
+    actual: str,
+    feedback_source: str = "user",
+    workflow: WorkflowManager = Depends(get_workflow_manager)
+):
+    """Log feedback for agent performance tracking (for ROI/accuracy measurement)"""
+    try:
+        workflow.log_feedback(
+            ticket_id=ticket_id,
+            agent=agent,
+            actual=actual,
+            feedback_source=feedback_source
+        )
+        return {
+            "message": "Feedback logged successfully",
+            "ticket_id": ticket_id,
+            "agent": agent
+        }
+    except Exception as e:
+        logger.error(f"Feedback logging failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to log feedback: {str(e)}")
+
+# Human review endpoint for low-confidence tickets
+@app.get("/api/v1/review/{ticket_id}")
+async def get_ticket_review(ticket_id: str):
+    """Get draft analysis for human review (HITL)"""
+    try:
+        # In production, this would fetch from a database
+        return {
+            "ticket_id": ticket_id,
+            "status": "needs_review",
+            "message": "This ticket has been flagged for human review due to low confidence scores",
+            "review_url": f"/api/v1/review/{ticket_id}/submit"
+        }
+    except Exception as e:
+        logger.error(f"Review retrieval failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve review: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(
