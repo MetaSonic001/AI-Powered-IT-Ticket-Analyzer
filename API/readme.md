@@ -157,6 +157,16 @@ Prerequisites
    REM Start the API with uvicorn (dev mode with reload)
    python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
+  REM --- Convenience: start script ---
+  REM You can start the API using the included convenience script which sets
+  REM sensible local defaults (Chroma path, SQLite path) and ensures the
+  REM `API` package is on `sys.path`.
+  REM From the repository root:
+  python API/start_api.py --reload
+
+  REM This is equivalent to running uvicorn but is handy for developers.
+  REM Ensure `uvicorn` is installed in your venv (pip install -r requirements.txt).
+
    REM Visit API docs:
    REM <http://localhost:8000/api/docs>
 
