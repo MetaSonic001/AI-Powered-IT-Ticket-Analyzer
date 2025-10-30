@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 import json
-from datetime import datetime, timezone
+from datetime import timezone
 
 
 def setup_logger(

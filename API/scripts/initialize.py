@@ -24,7 +24,7 @@ async def initialize_system():
     try:
         # Load settings
         settings = get_settings()
-        print(f"✅ Loaded settings")
+        print("✅ Loaded settings")
         
         # Initialize services
         print("🔧 Initializing services...")
@@ -62,7 +62,7 @@ async def initialize_system():
         
         # Get statistics
         stats = await knowledge_service.get_statistics()
-        print(f"✅ Knowledge base initialized with:")
+        print("✅ Knowledge base initialized with:")
         print(f"   📄 {stats['total_documents']} documents")
         print(f"   🏷️  {stats['total_categories']} categories")
         print(f"   🔧 Using Weaviate: {stats['using_weaviate']}")

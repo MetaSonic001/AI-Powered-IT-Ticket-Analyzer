@@ -6,10 +6,7 @@ Setup and initialization scripts for IT Ticket Analyzer
 import os
 import sys
 import subprocess
-import asyncio
-import json
 from pathlib import Path
-from typing import List, Dict, Any
 
 def create_directory_structure():
     """Create required directory structure"""

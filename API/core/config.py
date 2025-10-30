@@ -4,26 +4,28 @@ Core configuration settings for the IT Ticket Analyzer
 from pydantic_settings import SettingsConfigDict
 
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, AliasChoices
 from typing import Optional, List, Dict, Any
-import os
 from pathlib import Path
 import logging
+
+# Anchor all default paths relative to the API directory (project root for the API app)
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     # API Configuration
     api_title: str = "AI-Powered IT Ticket Analyzer"
     api_version: str = "1.0.0"
-    api_debug: bool = Field(default=False, env="DEBUG")
+    api_debug: bool = Field(default=False, validation_alias=AliasChoices("DEBUG"))
     
     # Server Configuration
-    host: str = Field(default="0.0.0.0", env="HOST")
-    port: int = Field(default=8000, env="PORT")
-    workers: int = Field(default=1, env="WORKERS")
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8000)
+    workers: int = Field(default=1)
     
     # Model Configuration
-    use_ollama: bool = Field(default=True, env="USE_OLLAMA")
-    ollama_host: str = Field(default="http://localhost:11434", env="OLLAMA_HOST")
+    use_ollama: bool = Field(default=True)
+    ollama_host: str = Field(default="http://localhost:11434")
     ollama_models: Dict[str, str] = {
         "embedding": "nomic-embed-text:latest",
         "llm": "gemma2:2b",
@@ -31,8 +33,8 @@ class Settings(BaseSettings):
     }
     
     # Hugging Face Configuration (fallback)
-    use_huggingface: bool = Field(default=True, env="USE_HUGGINGFACE")
-    hf_token: Optional[str] = Field(default=None, env="HUGGINGFACE_TOKEN")
+    use_huggingface: bool = Field(default=True)
+    hf_token: Optional[str] = Field(default=None, validation_alias=AliasChoices("HUGGINGFACE_TOKEN"))
     hf_models: Dict[str, str] = {
         "embedding": "sentence-transformers/all-MiniLM-L6-v2",
         "classification": "microsoft/DialoGPT-medium",
@@ -40,23 +42,32 @@ class Settings(BaseSettings):
     }
     
     # External API Configuration (optional)
-    groq_api_key: Optional[str] = Field(default=None, env="GROQ_API_KEY")
-    groq_model: str = Field(default="llama3-8b-8192", env="GROQ_MODEL")
+    groq_api_key: Optional[str] = Field(default=None)
+    groq_model: str = Field(default="llama3-8b-8192")
     
-    gemini_api_key: Optional[str] = Field(default=None, env="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-pro", env="GEMINI_MODEL")
-    
-    openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
+    gemini_api_key: Optional[str] = Field(default=None)
+    gemini_model: str = Field(default="gemini-pro")
     
     # Weaviate Configuration
-    weaviate_host: str = Field(default="http://localhost:8080", env="WEAVIATE_HOST")
-    weaviate_api_key: Optional[str] = Field(default=None, env="WEAVIATE_API_KEY")
-    weaviate_class_name: str = Field(default="ITKnowledge", env="WEAVIATE_CLASS")
+    weaviate_host: str = Field(default="http://localhost:8080")
+    weaviate_api_key: Optional[str] = Field(default=None)
+    weaviate_class_name: str = Field(default="ITKnowledge", validation_alias=AliasChoices("WEAVIATE_CLASS"))
+
+    # Deployment mode
+    use_docker: bool = Field(default=False)
+    # Local persistence options (non-vector)
+    # NOTE: SQLite is only for general app persistence when needed, not for vector search
+    use_sqlite: bool = Field(default=True)
+    sqlite_db_path: str = Field(default=str((BASE_DIR / "data" / "app.db").resolve()))  
+    # Ledger (SQLite) for auto-sync bookkeeping
+    ledger_db_path: str = Field(default=str((BASE_DIR / "data" / "ledger.db").resolve()))
+    # ChromaDB persistent directory for local vector storage (used when not using Docker/Weaviate)
+    chroma_persist_directory: str = Field(default=str((BASE_DIR / "data" / "chroma_db").resolve()))
     
     # Data Configuration
-    data_dir: str = Field(default="data", env="DATA_DIR")
-    models_dir: str = Field(default="models", env="MODELS_DIR")
-    logs_dir: str = Field(default="logs", env="LOGS_DIR")
+    data_dir: str = Field(default=str((BASE_DIR / "data").resolve()))
+    models_dir: str = Field(default=str((BASE_DIR / "models").resolve()))
+    logs_dir: str = Field(default=str((BASE_DIR / "logs").resolve()))
     
     # Knowledge Base Configuration
     knowledge_sources: List[str] = [
@@ -67,20 +78,20 @@ class Settings(BaseSettings):
     ]
     
     # Kaggle Configuration
-    kaggle_username: Optional[str] = Field(default=None, env="KAGGLE_USERNAME")
-    kaggle_key: Optional[str] = Field(default=None, env="KAGGLE_KEY")
+    kaggle_username: Optional[str] = Field(default=None)
+    kaggle_key: Optional[str] = Field(default=None)
     
     # GitHub Configuration
-    github_token: Optional[str] = Field(default=None, env="GITHUB_TOKEN")
+    github_token: Optional[str] = Field(default=None)
     
     # Scraping Configuration
-    max_concurrent_requests: int = Field(default=5, env="MAX_CONCURRENT_REQUESTS")
-    request_delay: float = Field(default=1.0, env="REQUEST_DELAY")
+    max_concurrent_requests: int = Field(default=5)
+    request_delay: float = Field(default=1.0)
     
     # ML Configuration
-    embedding_dimension: int = Field(default=384, env="EMBEDDING_DIMENSION")
-    max_sequence_length: int = Field(default=512, env="MAX_SEQUENCE_LENGTH")
-    batch_size: int = Field(default=32, env="BATCH_SIZE")
+    embedding_dimension: int = Field(default=384)
+    max_sequence_length: int = Field(default=512)
+    batch_size: int = Field(default=32)
     
     # Categories Configuration
     ticket_categories: List[str] = [
@@ -107,32 +118,72 @@ class Settings(BaseSettings):
     ]
     
     # CrewAI Configuration
-    crew_verbose: bool = Field(default=True, env="CREW_VERBOSE")
-    crew_memory: bool = Field(default=True, env="CREW_MEMORY")
-    max_agents: int = Field(default=5, env="MAX_AGENTS")
+    crew_verbose: bool = Field(default=True)
+    crew_memory: bool = Field(default=True)
+    max_agents: int = Field(default=5)
     
     # Cache Configuration
-    enable_caching: bool = Field(default=True, env="ENABLE_CACHING")
-    cache_ttl: int = Field(default=3600, env="CACHE_TTL")  # seconds
+    enable_caching: bool = Field(default=True)
+    cache_ttl: int = Field(default=3600)  # seconds
     
     # Logging Configuration
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    log_level: str = Field(default="INFO")
     log_format: str = Field(
-        default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        env="LOG_FORMAT"
+        default="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str((BASE_DIR / ".env").resolve()),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"  # or "ignore" if you want to allow unknown env keys
     )
+    
+    @field_validator("sqlite_db_path")
+    def ensure_sqlite_parent(cls, v):
+        """Ensure the parent directory for the SQLite DB exists"""
+        try:
+            p = Path(v)
+            if not p.is_absolute():
+                p = (BASE_DIR / p).resolve()
+            parent = p.parent
+            parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Could not ensure SQLite parent dir for {v}: {e}")
+        return str(p)
+    
+    @field_validator("chroma_persist_directory")
+    def ensure_chroma_dir(cls, v):
+        """Ensure the ChromaDB persistence directory exists"""
+        try:
+            path = Path(v)
+            if not path.is_absolute():
+                path = (BASE_DIR / path).resolve()
+            path.mkdir(parents=True, exist_ok=True)
+            return str(path)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Could not ensure Chroma directory {v}: {e}")
+            return v
+        
+    @field_validator("ledger_db_path")
+    def ensure_ledger_parent(cls, v):
+        """Ensure the parent directory for the ledger DB exists."""
+        try:
+            p = Path(v)
+            if not p.is_absolute():
+                p = (BASE_DIR / p).resolve()
+            parent = p.parent
+            parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Could not ensure Ledger parent dir for {v}: {e}")
+        return str(p)
         
     @field_validator("data_dir", "models_dir", "logs_dir")
     def create_directories(cls, v):
         """Create directories if they don't exist"""
         path = Path(v)
+        if not path.is_absolute():
+            path = (BASE_DIR / path).resolve()
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
     
@@ -147,19 +198,18 @@ class Settings(BaseSettings):
     @property
     def has_external_llm(self) -> bool:
         """Check if external LLM APIs are configured"""
-        return bool(self.groq_api_key or self.gemini_api_key or self.openai_api_key)
+        return bool(self.groq_api_key or self.gemini_api_key)
     
     @property
     def primary_llm_provider(self) -> str:
         """Get primary LLM provider"""
-        if self.use_ollama:
-            return "ollama"
-        elif self.groq_api_key:
+        # Prefer external providers if keys are present to avoid local Ollama usage
+        if self.groq_api_key:
             return "groq"
         elif self.gemini_api_key:
             return "gemini"
-        elif self.openai_api_key:
-            return "openai"
+        elif self.use_ollama:
+            return "ollama"
         else:
             return "huggingface"
     
@@ -222,6 +272,7 @@ def reload_settings() -> Settings:
 
 # Example .env file content
 ENV_EXAMPLE = """
+# ========== Common (Docker or Local) ==========
 # Server Configuration
 DEBUG=false
 HOST=0.0.0.0
@@ -233,19 +284,9 @@ OLLAMA_HOST=http://localhost:11434
 USE_HUGGINGFACE=true
 HUGGINGFACE_TOKEN=your_hf_token_here
 
-# External APIs (optional)
-GROQ_API_KEY=your_groq_key_here
-GEMINI_API_KEY=your_gemini_key_here
-OPENAI_API_KEY=your_openai_key_here
-
-# Weaviate Configuration
-WEAVIATE_HOST=http://localhost:8080
-WEAVIATE_API_KEY=your_weaviate_key_here
-
-# Data Sources
-KAGGLE_USERNAME=your_kaggle_username
-KAGGLE_KEY=your_kaggle_key
-GITHUB_TOKEN=your_github_token
+# External providers (optional)
+GROQ_API_KEY=
+GEMINI_API_KEY=
 
 # Directories
 DATA_DIR=./data
@@ -260,6 +301,32 @@ MAX_CONCURRENT_REQUESTS=5
 BATCH_SIZE=32
 ENABLE_CACHING=true
 CACHE_TTL=3600
+
+
+# ========== Docker-only ==========
+# Set to true when running via docker-compose
+USE_DOCKER=false
+# In Docker, the Weaviate service is reachable at http://weaviate:8080
+#WEAVIATE_HOST=http://weaviate:8080
+WEAVIATE_API_KEY=
+
+
+# ========== Local-only (no Docker) ==========
+# Keep USE_DOCKER=false for local mode
+CHROMA_PERSIST_DIRECTORY=./data/chroma_db
+# Optional: general app persistence (non-vector)
+USE_SQLITE=true
+SQLITE_DB_PATH=./data/app.db
+# Ledger DB for auto-sync bookkeeping
+LEDGER_DB_PATH=./data/ledger.db
+# If you run a local Weaviate outside Docker (instead of Chroma), point to localhost
+#WEAVIATE_HOST=http://localhost:8080
+
+
+# Data Sources (optional)
+KAGGLE_USERNAME=
+KAGGLE_KEY=
+GITHUB_TOKEN=
 """
 
 if __name__ == "__main__":

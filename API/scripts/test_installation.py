@@ -5,14 +5,13 @@ Test script to verify IT Ticket Analyzer installation
 
 import asyncio
 import sys
-import json
 from pathlib import Path
 
 # Add the current directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-async def test_installation():
-    '''Test the installation'''
+async def verify_installation():
+    '''Verify the installation (manual script, not a pytest test).'''
     
     print("🧪 Testing IT Ticket Analyzer installation...")
     
@@ -21,7 +20,6 @@ async def test_installation():
         print("📦 Testing imports...")
         
         from core.config import get_settings
-        from core.models import TicketAnalysisRequest
         from services.model_service import ModelService
         from services.knowledge_service import KnowledgeService
         from services.data_service import DataService
@@ -90,7 +88,7 @@ async def test_installation():
             max_results=3
         )
         
-        print(f"✅ Complete pipeline test successful:")
+        print("✅ Complete pipeline test successful:")
         print(f"   🏷️  Category: {classification['category']}")
         print(f"   💡 Recommendations: {len(recommendations)}")
         
@@ -108,5 +106,5 @@ async def test_installation():
         return False
 
 if __name__ == "__main__":
-    success = asyncio.run(test_installation())
+    success = asyncio.run(verify_installation())
     sys.exit(0 if success else 1)

@@ -1,4 +1,4 @@
-# --- Python ---
+# --- Python artifacts ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -12,6 +12,10 @@ build/
 .Python
 *.so
 
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+
 # --- Virtual Envs ---
 .venv/
 venv/
@@ -20,20 +24,29 @@ ENV/
 .conda/
 conda-env/
 
-# --- FastAPI / Uvicorn ---
-*.db
-*.sqlite3
+# --- Env files (local secrets) ---
+.env
+.env.local
+.env.*.local
+secrets.yaml
 
-# --- Logs & Debug ---
+# --- Logs ---
 *.log
-*.out
-*.err
 logs/
 debug.log
 
 # --- Data / Datasets ---
-data/
-datasets/
+# Ignore data contents by default (keep folder in repo, allow specific samples/fixtures)
+data/**
+!data/.gitkeep
+!data/samples/**
+!data/fixtures/**
+
+# Chroma/ledger/vector DB artifacts
+data/chroma_db/**
+data/ledger.db
+
+# Typical dataset files (ignore large files)
 *.csv
 *.tsv
 *.parquet
@@ -45,8 +58,13 @@ datasets/
 *.pkl
 *.joblib
 
-# --- Models / AI ---
-models/
+# --- Models / AI artifacts ---
+# Ignore binary model weights and checkpoints by default; keep metadata/config if needed
+models/**
+!models/.gitkeep
+!models/*.yaml
+!models/*.yml
+!models/*.json
 checkpoints/
 saved_models/
 *.pt
@@ -56,33 +74,43 @@ saved_models/
 *.onnx
 *.pb
 *.tflite
+*.safetensors
 
-# Hugging Face & Transformers
-huggingface/
-transformers_cache/
+# Hugging Face / transformers caches
 ~/.cache/huggingface/
 ~/.cache/torch/
 ~/.cache/transformers/
 ~/.cache/datasets/
+transformers_cache/
+hf_home/
 
-# Kaggle
+# Kaggle credentials
 .kaggle/
 kaggle.json
 
+# --- SSL / certs ---
+# Ignore private keys and certs; allow docs/scripts
+ssl/**/*.key
+ssl/**/*.pem
+ssl/**/*.pfx
+ssl/**/*.crt
+ssl/**/private/**
+!ssl/README.md
+!ssl/scripts/**
 
-# --- Docker ---
-*.pid
-*.seed
+# --- Docker / local services ---
 docker-compose.override.yml
+docker-compose.local.yml
+weaviate_data/
+weaviate_storage/
+*.wal
+*.snap
+*.idx
 
-# --- Env Files ---
-.env
-.env.local
-.env.*.local
-
-# --- IDEs / Editors ---
+# --- IDEs / editors ---
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
 *.bak
@@ -94,98 +122,9 @@ docker-compose.override.yml
 notebooks/
 jupyter_cache/
 
-# --- Misc ---
+# --- OS / Misc ---
 .DS_Store
 Thumbs.db
 *.orig
 *.rej
-*.bak
-*.tmp
-*.backup
-*.swp
-*.swo
-*.class
-*.log
-*.out
-*.err
-*.aux
-*.toc
 
-
-# VS Code
-.vscode/
-*.code-workspace
-
-# JetBrains
-.idea/
-*.iml
-
-# macOS
-.DS_Store
-
-# Windows
-Thumbs.db
-
-# Logs
-*.log
-logs/
-debug.log
-
-# Runtime files
-*.pid
-*.sock
-*.cache
-# Env files
-.env
-.env.*.local
-secrets.yaml
-
-# API keys, local credentials
-*.key
-*.pem
-# Large models or datasets
-*.pt
-*.pth
-*.bin
-*.h5
-*.ckpt
-*.tflite
-
-# HuggingFace cache
-~/.cache/huggingface/
-hf_home/
-transformers_cache/
-
-# PyTorch / TensorFlow cache
-__pycache__/
-*.data
-*.index
-*.meta
-*.hdf5
-
-# FastAPI ML services temp
-*.onnx
-*.mlmodel
-*.safetensors
-# Docker / Weaviate data
-docker-compose.override.yml
-weaviate_data/
-weaviate_storage/
-*.wal
-*.snap
-*.idx
-
-# Any local SQLite / vector DB files
-*.db
-*.sqlite
-*.sqlite3
-# Docker
-*.dockerfile
-docker-compose.override.yml
-docker-compose.local.yml
-*.env
-*.log
-
-# Containers
-*.pid
-*.sock

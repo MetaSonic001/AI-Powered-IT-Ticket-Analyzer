@@ -2,8 +2,9 @@
 Pydantic models for request/response schemas
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Optional, Any, Union
+from pydantic import BaseModel, Field
+from pydantic import field_validator
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 from enum import Enum
 
@@ -61,14 +62,16 @@ class TicketAnalysisRequest(BaseModel):
     requester_info: Optional[RequesterInfo] = None
     additional_context: Optional[Dict[str, Any]] = None
     
-    @validator("title")
-    def validate_title(cls, v):
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Title cannot be empty")
         return v.strip()
     
-    @validator("description")
-    def validate_description(cls, v):
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str) -> str:
         if len(v.strip()) < 10:
             raise ValueError("Description must be at least 10 characters long")
         return v.strip()
@@ -91,7 +94,7 @@ class BulkProcessingOptions(BaseModel):
 
 class BulkTicketRequest(BaseModel):
     """Request model for bulk ticket processing"""
-    tickets: List[BulkTicketItem] = Field(..., min_items=1, max_items=1000)
+    tickets: List[BulkTicketItem] = Field(..., min_length=1, max_length=1000)
     options: Optional[BulkProcessingOptions] = BulkProcessingOptions()
 
 class SolutionRecommendationRequest(BaseModel):
@@ -107,8 +110,9 @@ class KnowledgeIngestRequest(BaseModel):
     source_type: SourceType
     metadata: Optional[Dict[str, Any]] = None
     
-    @validator("source")
-    def validate_source(cls, v):
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Source cannot be empty")
         return v.strip()

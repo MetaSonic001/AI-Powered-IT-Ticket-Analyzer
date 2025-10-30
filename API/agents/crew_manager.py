@@ -5,8 +5,6 @@ CrewAI Multi-Agent Manager for IT Ticket Analysis - FIXED
 import asyncio
 from typing import Dict, List, Any, Optional
 import time
-import logging
-from datetime import datetime
 import uuid
 from pydantic import Field
 
@@ -470,6 +468,38 @@ class CrewManager:
             except Exception as e:
                 logger.error(f"Failed to create solution task: {e}")
         
+        # Quality Assurance Task (reviews results from other agents)
+        if 'qa_reviewer' in self.agents and len(tasks) > 0:
+            try:
+                qa_task = Task(
+                    description=f"""
+                    Review the analysis results from the classification, priority prediction, and solution 
+                    recommendation agents for the following ticket:
+                    
+                    {context}
+                    
+                    Verify:
+                    1. Classification accuracy and category appropriateness
+                    2. Priority level justification
+                    3. Solution completeness and actionability
+                    4. Overall response quality
+                    
+                    Provide:
+                    1. Quality score (0.0-1.0)
+                    2. Completeness assessment
+                    3. Suggested improvements or missing elements
+                    4. Final validation status (approved/needs_revision)
+                    
+                    Format your response as JSON with keys: quality_score, completeness, improvements, status
+                    """,
+                    agent=self.agents['qa_reviewer'],
+                    expected_output="JSON formatted quality assurance review",
+                    context=tasks  # QA task reviews outputs from previous tasks
+                )
+                tasks.append(qa_task)
+            except Exception as e:
+                logger.error(f"Failed to create QA task: {e}")
+        
         logger.info(f"Created {len(tasks)} analysis tasks")
         return tasks
     
@@ -627,12 +657,58 @@ class CrewManager:
         requester_info: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Quick priority prediction only"""
-        # Implement priority prediction logic
+        # Enhanced priority prediction logic with keyword analysis
+        priority_keywords = {
+            "Critical": {
+                "keywords": ["server down", "system crash", "data loss", "security breach", "all users affected", "production down"],
+                "eta_hours": 2
+            },
+            "High": {
+                "keywords": ["slow", "error", "not working", "important", "urgent", "executive", "deadline"],
+                "eta_hours": 8
+            },
+            "Medium": {
+                "keywords": ["question", "help", "support", "issue", "problem", "unable"],
+                "eta_hours": 24
+            },
+            "Low": {
+                "keywords": ["request", "information", "how to", "feature", "enhancement"],
+                "eta_hours": 72
+            }
+        }
+        
+        text_lower = f"{title} {description}".lower()
+        priority = "Medium"  # default
+        eta_hours = 24.0
+        factors = []
+        confidence = 0.7
+        
+        # Check keywords for each priority level
+        for level, config in priority_keywords.items():
+            matched = [kw for kw in config["keywords"] if kw in text_lower]
+            if matched:
+                priority = level
+                eta_hours = config["eta_hours"]
+                factors = [f"Matched keywords: {', '.join(matched)}"]
+                confidence = min(0.95, 0.75 + (len(matched) * 0.05))
+                break
+        
+        # Consider requester info if provided
+        if requester_info:
+            department = requester_info.get("department", "").lower()
+            if "executive" in department or "c-" in department:
+                if priority == "Medium":
+                    priority = "High"
+                elif priority == "Low":
+                    priority = "Medium"
+                factors.append("Elevated due to requester department")
+                confidence = min(0.95, confidence + 0.05)
+        
         return {
-            "priority": "Medium",
-            "confidence": 0.8,
-            "estimated_resolution_hours": 24.0,
-            "factors": ["Standard analysis"]
+            "priority": priority,
+            "confidence": confidence,
+            "estimated_resolution_hours": eta_hours,
+            "factors": factors if factors else ["Standard keyword analysis"]
         }
     
     async def process_bulk_tickets(
@@ -642,7 +718,7 @@ class CrewManager:
         options: Optional[Dict] = None
     ):
         """Process multiple tickets in batch"""
-        logger.info(f"Starting bulk processing for {len(tickets)} tickets...")
+        logger.info(f"Starting bulk processing for {len(tickets)} tickets (task_id: {task_id})...")
         
         results = []
         for i, ticket in enumerate(tickets):
@@ -653,17 +729,38 @@ class CrewManager:
                     requester_info=ticket.get("requester_info"),
                     additional_context=ticket.get("additional_context")
                 )
+                result["batch_index"] = i
+                result["task_id"] = task_id
                 results.append(result)
                 
-                if i % 10 == 0:
-                    logger.info(f"Processed {i+1}/{len(tickets)} tickets")
-                    
+                logger.info(f"✅ Processed ticket {i+1}/{len(tickets)}")
+                
             except Exception as e:
                 logger.error(f"Failed to process ticket {i}: {str(e)}")
-                results.append({"error": str(e), "ticket_index": i})
+                results.append({
+                    "batch_index": i,
+                    "task_id": task_id,
+                    "error": str(e),
+                    "status": "failed"
+                })
         
-        logger.info(f"✅ Bulk processing completed. {len(results)} results")
+        # Store results (in production would store in DB)
+        self._store_bulk_results(task_id, results)
+        
+        logger.info(f"✅ Bulk processing complete for task {task_id}: {len(results)} tickets processed")
         return results
+    
+    def _store_bulk_results(self, task_id: str, results: List[Dict]):
+        """Store bulk processing results (mock implementation)"""
+        # In production, this would store to a database
+        if not hasattr(self, '_bulk_results'):
+            self._bulk_results = {}
+        self._bulk_results[task_id] = {
+            "results": results,
+            "completed_at": time.time(),
+            "total": len(results),
+            "successful": len([r for r in results if "error" not in r])
+        }
     
     async def health_check(self) -> Dict[str, Any]:
         """Check health of crew manager and agents"""

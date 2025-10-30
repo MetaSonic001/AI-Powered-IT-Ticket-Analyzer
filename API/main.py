@@ -9,10 +9,7 @@ from fastapi.responses import JSONResponse
 import asyncio
 import uvicorn
 from contextlib import asynccontextmanager
-from typing import List, Dict, Optional, Any
-import logging
-from datetime import datetime
-import os
+from typing import Optional
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -31,6 +28,8 @@ from services.knowledge_service import KnowledgeService
 from services.data_service import DataService
 from services.model_service import ModelService
 from utils.logger import setup_logger
+from utils.ledger_sqlite import SqliteLedger
+from scripts.datasets import ingest_folder, Embedder
 
 # Setup logging
 logger = setup_logger(__name__)
@@ -66,12 +65,46 @@ async def lifespan(app: FastAPI):
         crew_manager = CrewManager(settings, model_service, knowledge_service)
         await crew_manager.initialize()
         
-        # Load initial knowledge base if empty
-        if await knowledge_service.is_empty():
-            logger.info("Knowledge base is empty, loading initial data...")
-            background_task = BackgroundTasks()
-            background_task.add_task(data_service.load_initial_datasets)
-            
+        # Start background auto-sync of local data folders into vector DB (idempotent via ledger)
+        async def _auto_sync_data_folders():
+            try:
+                data_dir = Path(getattr(settings, 'data_dir', './data'))
+                ledger = SqliteLedger(Path(getattr(settings, 'ledger_db_path', './data/ledger.db')))
+
+                embedder = Embedder()
+                folders = [
+                    data_dir / 'kaggle',
+                    data_dir / 'scraped',
+                    data_dir / 'processed',
+                    data_dir / 'imports',
+                    data_dir / 'exports',
+                ]
+                total = 0
+                for folder in folders:
+                    if folder.exists():
+                        added = await ingest_folder(folder, 'Documentation', 'auto', knowledge_service, embedder, ledger)
+                        if added:
+                            logger.info(f"Auto-sync: ingested {added} docs from {folder}")
+                        total += added
+
+                # Mark removed: entries whose files no longer exist
+                removed = 0
+                for entry in ledger.iter_entries():
+                    p = Path(entry.get('path') or '')
+                    if entry.get('source_type') in ('auto', 'manual') and entry.get('status') != 'removed':
+                        if not p.exists():
+                            try:
+                                ledger.mark_removed(entry['doc_id'])
+                                removed += 1
+                            except Exception:
+                                pass
+                health = await knowledge_service.health_check()
+                logger.info(f"Auto-sync complete. Added {total}, removed {removed}. Backend={health.get('backend')} Count={health.get('document_count')}")
+            except Exception as e:
+                logger.warning(f"Auto-sync skipped or failed: {e}")
+
+        asyncio.create_task(_auto_sync_data_folders())
+
         logger.info("✅ All services initialized successfully!")
         
     except Exception as e:
@@ -122,6 +155,35 @@ async def get_data_service() -> DataService:
     if not data_service:
         raise HTTPException(status_code=503, detail="Data service not initialized")
     return data_service
+# Ledger stats endpoint
+@app.get("/api/v1/knowledge/ledger")
+async def get_ledger(
+    include_entries: bool = False,
+    limit: int = 0,
+    status: Optional[str] = None,
+):
+    """Return ledger stats and optionally entries.
+
+    Query params:
+    - include_entries: when true, include entries payload (be mindful, may be large)
+    - limit: maximum number of entries to return (0 = no limit)
+    - status: filter by status (e.g., 'synced' or 'removed') when including entries
+    """
+    settings = get_settings()
+    ledger = SqliteLedger(Path(getattr(settings, 'ledger_db_path', './data/ledger.db')))
+    stats = ledger.stats()
+    resp = {"stats": stats}
+    if include_entries:
+        entries = []
+        for e in ledger.iter_entries():
+            if status and e.get("status") != status:
+                continue
+            entries.append(e)
+            if limit and len(entries) >= limit:
+                break
+        resp["entries"] = entries
+    return resp
+
 
 # Root endpoint
 @app.get("/")
@@ -187,7 +249,9 @@ async def analyze_ticket(
             additional_context=request.additional_context
         )
         
-        return TicketAnalysisResponse(**analysis_result)
+        # Return a plain dict so direct function calls in tests receive a subscriptable result.
+        # FastAPI will validate/serialize this against TicketAnalysisResponse for HTTP clients.
+        return analysis_result
         
     except Exception as e:
         logger.error(f"Ticket analysis failed: {str(e)}")

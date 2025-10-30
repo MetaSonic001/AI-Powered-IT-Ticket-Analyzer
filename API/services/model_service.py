@@ -3,14 +3,9 @@ Model Service for managing different AI/ML models
 Supports Ollama, Hugging Face, Groq, Gemini with fallbacks
 """
 
-import asyncio
 import aiohttp
-import json
-import time
-from typing import Dict, List, Any, Optional, Union
-import logging
+from typing import Dict, List, Any, Union
 import numpy as np
-from pathlib import Path
 
 # ML Libraries
 try:
@@ -63,10 +58,12 @@ class ModelService:
         try:
             logger.info("🤖 Initializing Model Service...")
             
-            # Initialize providers in order of preference
-            await self._init_ollama()
-            await self._init_huggingface()
+            # Initialize providers
+            # If external providers are configured, skip Ollama to honor user's preference
             await self._init_external_apis()
+            if not (self.settings.groq_api_key or self.settings.gemini_api_key):
+                await self._init_ollama()
+            await self._init_huggingface()
             
             # Load default models
             await self._load_default_models()
@@ -160,6 +157,22 @@ class ModelService:
                 logger.info("✅ Gemini client initialized")
             except Exception as e:
                 logger.warning(f"Gemini initialization failed: {str(e)}")
+
+    # -------- Prompt/token optimization helpers --------
+    def _truncate(self, text: str, max_chars: int) -> str:
+        if len(text) <= max_chars:
+            return text
+        head = text[: max_chars // 2]
+        tail = text[-(max_chars // 2) :]
+        return head + "\n...\n" + tail
+
+    def _condense_text_for_llm(self, text: str, max_chars: int = 2000) -> str:
+        """Condense text for external LLMs to reduce token usage without losing key context."""
+        # Simple heuristics: collapse whitespace and keep head+tail sections
+        compact = " ".join(text.split())
+        # Prefer to keep within ~max_chars characters
+        compact = self._truncate(compact, max_chars)
+        return compact
     
     async def _load_default_models(self):
         """Load default models for immediate use"""
@@ -172,12 +185,7 @@ class ModelService:
         if isinstance(texts, str):
             texts = [texts]
         
-        # Try Ollama first
-        if 'ollama' in self.clients:
-            try:
-                return await self._generate_ollama_embeddings(texts)
-            except Exception as e:
-                logger.warning(f"Ollama embedding failed: {str(e)}")
+        # Prefer external/HF over Ollama when available
         
         # Try HuggingFace
         if 'huggingface' in self.embedders:
@@ -187,6 +195,13 @@ class ModelService:
                 return embeddings
             except Exception as e:
                 logger.warning(f"HuggingFace embedding failed: {str(e)}")
+
+        # Try Ollama
+        if 'ollama' in self.clients:
+            try:
+                return await self._generate_ollama_embeddings(texts)
+            except Exception as e:
+                logger.warning(f"Ollama embedding failed: {str(e)}")
         
         # Fallback to simple word embeddings
         logger.warning("Using fallback embedding method")
@@ -243,15 +258,7 @@ class ModelService:
     
     async def classify_text(self, text: str, categories: List[str]) -> Dict[str, Any]:
         """Classify text into given categories"""
-        
-        # Try Ollama LLM first
-        if 'ollama' in self.clients:
-            try:
-                return await self._classify_ollama(text, categories)
-            except Exception as e:
-                logger.warning(f"Ollama classification failed: {str(e)}")
-        
-        # Try external APIs
+        # Prefer external APIs if available
         if 'groq' in self.clients:
             try:
                 return await self._classify_groq(text, categories)
@@ -264,6 +271,13 @@ class ModelService:
             except Exception as e:
                 logger.warning(f"Gemini classification failed: {str(e)}")
         
+        # Try Ollama next
+        if 'ollama' in self.clients:
+            try:
+                return await self._classify_ollama(text, categories)
+            except Exception as e:
+                logger.warning(f"Ollama classification failed: {str(e)}")
+
         # Try HuggingFace
         if 'huggingface' in self.classifiers:
             try:
@@ -324,11 +338,12 @@ class ModelService:
         
         client = self.clients['groq']
         
+        condensed = self._condense_text_for_llm(text, max_chars=1800)
         prompt = f"""
         Classify this IT support ticket into one of these categories:
         Categories: {', '.join(categories)}
         
-        Ticket: {text}
+        Ticket: {condensed}
         
         Return only the most appropriate category name.
         """
@@ -337,7 +352,7 @@ class ModelService:
             response = client.chat.completions.create(
                 model=self.settings.groq_model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=50,
+                max_tokens=48,
                 temperature=0.1
             )
             
@@ -366,11 +381,12 @@ class ModelService:
         
         model = self.clients['gemini']
         
+        condensed = self._condense_text_for_llm(text, max_chars=1800)
         prompt = f"""
         Classify this IT support ticket into one of these categories:
         Categories: {', '.join(categories)}
         
-        Ticket: {text}
+        Ticket: {condensed}
         
         Return only the most appropriate category name.
         """
@@ -433,7 +449,7 @@ class ModelService:
         return {
             "category": best_category,
             "confidence": confidence,
-            "reasoning": f"Keyword-based classification with HF model support"
+            "reasoning": "Keyword-based classification with HF model support"
         }
     
     def _fallback_classification(self, text: str, categories: List[str]) -> Dict[str, Any]:
@@ -473,7 +489,7 @@ class ModelService:
                 return {
                     "category": best_category[0],
                     "confidence": confidence,
-                    "reasoning": f"Keyword-based fallback classification"
+                    "reasoning": "Keyword-based fallback classification"
                 }
         
         # Default to first category
@@ -485,27 +501,28 @@ class ModelService:
     
     async def generate_text(self, prompt: str, max_tokens: int = 150) -> str:
         """Generate text using the best available LLM"""
-        
-        # Try Ollama first
-        if 'ollama' in self.clients:
-            try:
-                return await self._generate_ollama_text(prompt, max_tokens)
-            except Exception as e:
-                logger.warning(f"Ollama text generation failed: {str(e)}")
-        
-        # Try external APIs
+        condensed_prompt = self._condense_text_for_llm(prompt, max_chars=3000)
+
+        # Prefer external APIs first
         if 'groq' in self.clients:
             try:
-                return await self._generate_groq_text(prompt, max_tokens)
+                return await self._generate_groq_text(condensed_prompt, min(max_tokens, 256))
             except Exception as e:
                 logger.warning(f"Groq text generation failed: {str(e)}")
         
         if 'gemini' in self.clients:
             try:
-                return await self._generate_gemini_text(prompt, max_tokens)
+                return await self._generate_gemini_text(condensed_prompt, min(max_tokens, 256))
             except Exception as e:
                 logger.warning(f"Gemini text generation failed: {str(e)}")
         
+        # Try Ollama next
+        if 'ollama' in self.clients:
+            try:
+                return await self._generate_ollama_text(condensed_prompt, max_tokens)
+            except Exception as e:
+                logger.warning(f"Ollama text generation failed: {str(e)}")
+
         # Fallback
         return "Unable to generate response with available models."
     

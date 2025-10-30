@@ -4,27 +4,22 @@ Handles Kaggle datasets, web scraping, data preprocessing, and analytics
 UPDATED FOR CRAWL4AI v0.7.x
 """
 
-import asyncio
 import aiohttp
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import json
-import csv
-from typing import Dict, List, Any, Optional, Union
-import logging
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-import re
-import uuid
-from urllib.parse import urlparse
-from datetime import datetime, timezone
+from datetime import timezone
+import os
+import importlib
 
 # Data processing libraries
-try:
-    import kaggle
-    KAGGLE_AVAILABLE = True
-except ImportError:
-    KAGGLE_AVAILABLE = False
+# IMPORTANT: Avoid importing kaggle at module import time because the package
+# triggers authentication on import and fails if credentials are missing.
+# We'll lazy-import inside _setup_kaggle only when credentials/config exist.
+KAGGLE_AVAILABLE = False
 
 # FIXED: Updated Crawl4AI imports for v0.7.x
 try:
@@ -34,22 +29,12 @@ except ImportError:
     CRAWL4AI_AVAILABLE = False
 
 try:
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.cluster import KMeans
-    from sklearn.metrics.pairwise import cosine_similarity
+    import sklearn  # noqa: F401
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
 
-import os
-
-print("KAGGLE_USERNAME:", os.getenv("KAGGLE_USERNAME"))
-print("KAGGLE_KEY:", os.getenv("KAGGLE_KEY"))
-
 from core.config import Settings
-from core.models import DatasetInfo, ProcessingStats
-from services.knowledge_service import KnowledgeService
-from services.model_service import ModelService
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -91,19 +76,35 @@ class DataService:
     
     async def _setup_kaggle(self):
         """Setup Kaggle API client"""
-        if not KAGGLE_AVAILABLE:
-            logger.warning("Kaggle API not available")
+        # Only attempt to import/configure Kaggle if credentials or config are present
+        # Accept either env vars, a user-level kaggle.json, or a repo-level kaggle.json
+        creds_env = bool(self.settings.kaggle_username and self.settings.kaggle_key)
+        user_kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
+        repo_kaggle_json = Path.cwd() / "kaggle.json"
+
+        if not creds_env and not user_kaggle_json.exists() and not repo_kaggle_json.exists():
+            logger.info("Kaggle credentials not found; skipping Kaggle setup.")
             return
-        
-        if not (self.settings.kaggle_username and self.settings.kaggle_key):
-            logger.warning("Kaggle credentials not provided")
-            return
-        
+
         try:
-            # Configure Kaggle API
+            # If repo-level kaggle.json exists, point Kaggle to it without requiring user HOME placement
+            if repo_kaggle_json.exists():
+                os.environ.setdefault("KAGGLE_CONFIG_DIR", str(repo_kaggle_json.parent.resolve()))
+
+            # If credentials provided via .env, expose them to Kaggle via environment
+            if creds_env:
+                os.environ.setdefault("KAGGLE_USERNAME", str(self.settings.kaggle_username))
+                os.environ.setdefault("KAGGLE_KEY", str(self.settings.kaggle_key))
+
+            # Lazy import kaggle only when we're confident credentials/config exist
+            import kaggle  # type: ignore
+            global KAGGLE_AVAILABLE
+            KAGGLE_AVAILABLE = True
+
+            # Configure Kaggle API (authenticate will succeed if env or config is set up)
             kaggle.api.authenticate()
             logger.info("✅ Kaggle API configured successfully")
-            
+
         except Exception as e:
             logger.warning(f"Kaggle setup failed: {str(e)}")
     
@@ -175,6 +176,7 @@ class DataService:
             dataset_dir.mkdir(parents=True, exist_ok=True)
             
             # Download dataset
+            kaggle = importlib.import_module("kaggle")
             kaggle.api.dataset_download_files(
                 dataset_id,
                 path=str(dataset_dir),
@@ -728,7 +730,7 @@ class DataService:
             # Basic metrics
             total_tickets = len([item for item in knowledge_items if item.get("type") == "ticket"])
             total_solutions = len([item for item in knowledge_items if item.get("type") == "solution"])
-            total_docs = len([item for item in knowledge_items if item.get("type") == "documentation"])
+            # total_docs not currently used in UI metrics
             
             # Category analysis
             category_stats = {}
@@ -771,11 +773,19 @@ class DataService:
             # Recent tickets (last 10)
             recent_tickets = knowledge_items[-10:] if knowledge_items else []
             
+            # Calculate accuracy from processing stats if available
+            accuracy_rate = 0.0
+            if hasattr(self, 'processing_stats') and 'classifications' in self.processing_stats:
+                stats = self.processing_stats['classifications']
+                total = stats.get('total', 0)
+                correct = stats.get('correct', 0)
+                accuracy_rate = correct / total if total > 0 else 0.0
+            
             return {
                 "metrics": {
                     "total_tickets_analyzed": total_tickets,
-                    "avg_processing_time_ms": 850.5,  # Mock value
-                    "accuracy_rate": 0.92,
+                    "avg_processing_time_ms": self.processing_stats.get('avg_time_ms', 850.5),
+                    "accuracy_rate": accuracy_rate if accuracy_rate > 0 else 0.92,  # Mock value when no stats
                     "knowledge_base_size": len(knowledge_items),
                     "active_solutions": total_solutions
                 },

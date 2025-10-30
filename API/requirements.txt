@@ -27,6 +27,7 @@ openai
 
 # Vector Database
 weaviate-client
+chromadb  # Local vector DB for non-Docker mode
 
 # Data Processing
 pandas
@@ -96,7 +97,7 @@ orjson
 # File Processing
 python-magic
 pillow
-PyPDF2
+pypdf  # Replaces deprecated PyPDF2
 python-docx
 
 # Async Task Queue
