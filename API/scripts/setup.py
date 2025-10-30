@@ -56,7 +56,7 @@ HUGGINGFACE_TOKEN=your_hf_token_here
 
 # External AI APIs (optional - only use if you have API keys)
 GROQ_API_KEY=your_groq_key_here
-GROQ_MODEL=llama3-8b-8192
+GROQ_MODEL=openai/gpt-oss-20b
 GEMINI_API_KEY=your_gemini_key_here
 GEMINI_MODEL=gemini-pro
 OPENAI_API_KEY=your_openai_key_here

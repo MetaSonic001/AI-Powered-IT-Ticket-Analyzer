@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     
     # External API Configuration (optional)
     groq_api_key: Optional[str] = Field(default=None)
-    groq_model: str = Field(default="llama3-8b-8192")
+    groq_model: str = Field(default="openai/gpt-oss-20b")
     
     gemini_api_key: Optional[str] = Field(default=None)
     gemini_model: str = Field(default="gemini-pro")
