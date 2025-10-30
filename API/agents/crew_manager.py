@@ -11,7 +11,7 @@ from pydantic import Field
 try:
     from crewai import Agent, Task, Crew, Process
     from crewai.tools import BaseTool
-    from crewai_tools import SerperDevTool, WebsiteSearchTool
+    from crewai_tools import SerperDevTool
     CREWAI_AVAILABLE = True
 except ImportError:
     # Fallback if CrewAI is not available
@@ -154,6 +154,7 @@ class CrewManager:
         self.crew = None
         self.initialized = False
         self.crewai_available = CREWAI_AVAILABLE
+        self.llm = None
         
     async def initialize(self):
         """Initialize the crew and agents"""
@@ -168,6 +169,15 @@ class CrewManager:
             # Initialize tools
             await self._initialize_tools()
             
+            # Configure LLM explicitly to avoid defaulting to OpenAI
+            self.llm = self._build_llm()
+
+            # If no Groq LLM is configured, skip CrewAI to avoid OpenAI fallback
+            if not self.llm:
+                logger.warning("No Groq LLM configured (GROQ_API_KEY missing or invalid). Skipping CrewAI and using fallback analysis.")
+                self.initialized = True
+                return
+
             # Create agents
             await self._create_agents()
             
@@ -181,6 +191,37 @@ class CrewManager:
             logger.error(f"❌ Failed to initialize CrewAI: {str(e)}")
             # Don't raise, just use fallback
             self.initialized = True
+
+    def _build_llm(self):
+        """Build a CrewAI LLM configured to Groq when available.
+        This prevents litellm from defaulting to OpenAI and requiring OPENAI_API_KEY.
+        """
+        if not self.crewai_available:
+            return None
+        try:
+            # Import lazily to avoid issues when CrewAI isn't installed
+            from crewai import LLM  # type: ignore
+        except Exception as e:
+            logger.warning(f"CrewAI LLM class not available: {e}")
+            return None
+
+        try:
+            # Prefer Groq if configured
+            if getattr(self.settings, 'groq_api_key', None):
+                model = getattr(self.settings, 'groq_model', '') or "groq/llama-3.1-8b-instant"
+                # Guard against accidental OpenAI-branded defaults
+                if isinstance(model, str) and model.lower().startswith("openai/"):
+                    model = "groq/llama-3.1-8b-instant"
+                logger.info(f"Configuring CrewAI LLM: provider=groq model={model}")
+                return LLM(model=model, api_key=self.settings.groq_api_key)
+
+            # If Groq isn't set, leave None to allow fallback paths
+            logger.info("No GROQ_API_KEY configured; CrewAI agents will not override default LLM.")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to build CrewAI LLM: {e}")
+            return None
     
     async def _initialize_tools(self):
         """Initialize tools for agents"""
@@ -214,7 +255,6 @@ class CrewManager:
         """Create AI agents for different tasks"""
         try:
             # Fix: Check if we have valid tools before creating agents
-            available_tools = list(self.tools.values())
             knowledge_tool = self.tools.get('knowledge_search')
             similar_tickets_tool = self.tools.get('similar_tickets')
             
@@ -226,6 +266,7 @@ class CrewManager:
                 technical issues. You excel at quickly identifying the root cause category of problems 
                 based on user descriptions. You have years of experience in IT helpdesk operations.""",
                 tools=[knowledge_tool] if knowledge_tool else [],  # Fix: Only add valid tools
+                llm=self.llm if self.llm else None,
                 verbose=getattr(self.settings, 'crew_verbose', True),
                 allow_delegation=False,
                 max_iter=3
@@ -239,6 +280,7 @@ class CrewManager:
                 You understand business impact, urgency factors, and resource allocation. You can 
                 quickly assess which issues need immediate attention and estimate realistic resolution times.""",
                 tools=[similar_tickets_tool] if similar_tickets_tool else [],  # Fix: Only add valid tools
+                llm=self.llm if self.llm else None,
                 verbose=getattr(self.settings, 'crew_verbose', True),
                 allow_delegation=False,
                 max_iter=3
@@ -252,6 +294,7 @@ class CrewManager:
                 experience across all IT domains. You excel at providing clear, actionable solutions
                 and can adapt your recommendations based on user technical skill levels.""",
                 tools=[tool for tool in [knowledge_tool, similar_tickets_tool] if tool],  # Fix: Filter None tools
+                llm=self.llm if self.llm else None,
                 verbose=getattr(self.settings, 'crew_verbose', True),
                 allow_delegation=False,
                 max_iter=5
@@ -265,6 +308,7 @@ class CrewManager:
                 trends, bottlenecks, and opportunities for improvement in IT support processes.
                 You provide actionable insights for management decision-making.""",
                 tools=[],  # No tools needed for analytics
+                llm=self.llm if self.llm else None,
                 verbose=getattr(self.settings, 'crew_verbose', True),
                 allow_delegation=False,
                 max_iter=3
@@ -278,6 +322,7 @@ class CrewManager:
                 processes. You ensure that all analysis results meet quality standards and provide
                 comprehensive, accurate information.""",
                 tools=[knowledge_tool] if knowledge_tool else [],  # Fix: Only add valid tools
+                llm=self.llm if self.llm else None,
                 verbose=getattr(self.settings, 'crew_verbose', True),
                 allow_delegation=False,
                 max_iter=2
@@ -306,7 +351,8 @@ class CrewManager:
                 tasks=[],  # Tasks will be added dynamically
                 process=Process.sequential,
                 memory=getattr(self.settings, 'crew_memory', True),
-                verbose=getattr(self.settings, 'crew_verbose', True)
+                verbose=getattr(self.settings, 'crew_verbose', True),
+                llm=self.llm if self.llm else None
             )
             
             logger.info("Crew created successfully")
@@ -603,6 +649,20 @@ class CrewManager:
                 query=f"{title} {description}",
                 max_results=3
             )
+
+            # Generate a concise fallback response via Groq if available (token-capped)
+            fallback_summary = None
+            try:
+                summary_prompt = (
+                    "You are helping an IT helpdesk agent. Given the ticket title and description, "
+                    "produce a short, actionable response with: 1) likely category, 2) priority hint, "
+                    "and 3) 3-5 concrete troubleshooting steps. Keep under ~120 words.\n\n"
+                    f"Title: {title}\nDescription: {description}\n"
+                )
+                # Keep tokens small to avoid costs
+                fallback_summary = await self.model_service.generate_text(summary_prompt, max_tokens=180)
+            except Exception as e:
+                logger.warning(f"Groq fallback summary generation failed: {e}")
             
             processing_time = (time.time() - start_time) * 1000
             
@@ -621,9 +681,12 @@ class CrewManager:
                     "factors": ["Keyword-based analysis"]
                 },
                 "recommended_solutions": solutions,
+                "assistant_response": fallback_summary or "Fallback used; unable to generate Groq summary.",
                 "processing_time_ms": processing_time,
                 "analysis_metadata": {
                     "method": "fallback",
+                    "fallback_provider": "groq" if getattr(self.model_service, 'clients', {}).get('groq') else "local",
+                    "fallback_summary_tokens": "<=180",
                     "agents_available": len(self.agents) > 0
                 }
             }
