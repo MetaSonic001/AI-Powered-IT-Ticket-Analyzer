@@ -1,9 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
+import { motion } from "framer-motion"
+import { useTheme } from "next-themes"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+
 import {
   ArrowRight,
   Play,
@@ -30,19 +35,39 @@ import {
   Network,
   Lock,
   MessageSquare,
+  Sun,
+  Moon,
 } from "lucide-react"
-import Link from "next/link"
 
-export default function HomePage() {
+/* ----------------------------- THEME TOGGLE UI ---------------------------- */
+
+function ThemeToggle() {
+  const { theme, setTheme, resolvedTheme } = useTheme()
+  const isDark = (theme ?? resolvedTheme) === "dark"
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Toggle theme"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      className="rounded-full"
+    >
+      {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+    </Button>
+  )
+}
+
+/* ------------------------------- PAGE CONTENT ----------------------------- */
+
+function PageContent() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
   const [demoStep, setDemoStep] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50)
-    }
+    const handleScroll = () => setIsScrolled(window.scrollY > 50)
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
@@ -76,48 +101,49 @@ export default function HomePage() {
     { title: "Recommendation", description: "Suggested fix: Check DHCP configuration", icon: CheckCircle },
   ]
 
+  /* -------------------------- Anim variants (subtle) -------------------------- */
+  const fadeUp = (delay = 0) => ({
+    initial: { opacity: 0, y: 24 },
+    whileInView: { opacity: 1, y: 0 },
+    viewport: { once: true, margin: "-100px" },
+    transition: { duration: 0.5, delay },
+  })
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Navigation */}
+    <div className="min-h-screen bg-background text-foreground">
+      {/* ================================ NAVBAR ================================ */}
       <nav
         className={`fixed top-0 w-full z-50 transition-all duration-300 ${
-          isScrolled ? "bg-background/95 backdrop-blur-xl border-b border-border shadow-sm" : "bg-transparent"
+          isScrolled ? "bg-background/80 backdrop-blur-xl border-b border-border shadow-sm" : "bg-transparent"
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex h-16 items-center justify-between">
+            {/* Brand */}
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-lg flex items-center justify-center shadow-lg">
                 <Bot className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold text-foreground">TicketFlow AI</span>
+              <span className="text-xl font-bold tracking-tight">TicketFlow AI</span>
             </div>
 
-            <div className="hidden md:flex items-center space-x-8">
-              <Link
-                href="/features"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
+            {/* Desktop Nav */}
+            <div className="hidden md:flex items-center space-x-6">
+              <Link href="/features" className="text-muted-foreground hover:text-foreground font-medium">
                 Features
               </Link>
-              <Link
-                href="/pricing"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
+              <Link href="/pricing" className="text-muted-foreground hover:text-foreground font-medium">
                 Pricing
               </Link>
-              <Link
-                href="/solutions"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
+              <Link href="/solutions" className="text-muted-foreground hover:text-foreground font-medium">
                 Solutions
               </Link>
-              <Link
-                href="/resources"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
+              <Link href="/resources" className="text-muted-foreground hover:text-foreground font-medium">
                 Resources
               </Link>
+
+              <ThemeToggle />
+
               <Button variant="ghost" onClick={handleLoginClick} className="font-medium">
                 Login
               </Button>
@@ -126,9 +152,13 @@ export default function HomePage() {
               </Button>
             </div>
 
-            <Button variant="ghost" size="sm" className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-              {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </Button>
+            {/* Mobile Menu Button */}
+            <div className="flex items-center gap-2 md:hidden">
+              <ThemeToggle />
+              <Button variant="ghost" size="sm" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+                {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -161,30 +191,43 @@ export default function HomePage() {
         )}
       </nav>
 
-      {/* Hero Section */}
+      {/* ================================ HERO ================================ */}
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10 pointer-events-none" />
+        {/* soft corporate grid glow */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
+          <div className="absolute inset-0 [mask-image:radial-gradient(600px_300px_at_50%_0%,black,transparent)] bg-[linear-gradient(0deg,transparent_24px,rgba(127,127,127,0.12)_25px),linear-gradient(90deg,transparent_24px,rgba(127,127,127,0.12)_25px)] bg-[size:28px_28px]" />
+        </div>
+
         <div className="max-w-7xl mx-auto relative">
           <div className="text-center">
-            <Badge variant="secondary" className="mb-6 px-4 py-2 shadow-sm">
-              <Sparkles className="w-4 h-4 mr-2" />
-              #1 AI Platform for Enterprise IT Support
-            </Badge>
+            <motion.div {...fadeUp(0)}>
+              <Badge variant="secondary" className="mb-6 px-4 py-2 shadow-sm">
+                <Sparkles className="w-4 h-4 mr-2" />
+                #1 AI Platform for Enterprise IT Support
+              </Badge>
+            </motion.div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-foreground mb-6 text-balance leading-tight">
+            <motion.h1
+              {...fadeUp(0.05)}
+              className="text-4xl sm:text-5xl lg:text-7xl font-bold mb-6 text-balance leading-tight"
+            >
               Transform Your IT Support with{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/80">
                 AI-Powered Intelligence
               </span>
-            </h1>
+            </motion.h1>
 
-            <p className="text-xl sm:text-2xl text-muted-foreground mb-8 max-w-4xl mx-auto text-pretty leading-relaxed">
+            <motion.p
+              {...fadeUp(0.1)}
+              className="text-xl sm:text-2xl text-muted-foreground mb-8 max-w-4xl mx-auto text-pretty leading-relaxed"
+            >
               Reduce resolution time by <strong className="text-foreground">60%</strong>, increase team productivity,
               and deliver exceptional IT support with our intelligent ticket analysis platform trusted by{" "}
               <strong className="text-foreground">500+ enterprise teams</strong>.
-            </p>
+            </motion.p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
+            <motion.div {...fadeUp(0.15)} className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
               <Button
                 size="lg"
                 onClick={handleTrialClick}
@@ -202,11 +245,11 @@ export default function HomePage() {
                 <Play className="w-5 h-5 mr-2" />
                 Watch Live Demo
               </Button>
-            </div>
+            </motion.div>
 
-            <div className="flex flex-col items-center space-y-6">
+            <motion.div {...fadeUp(0.2)} className="flex flex-col items-center space-y-6">
               <p className="text-sm text-muted-foreground font-medium">Trusted by IT teams at leading companies</p>
-              <div className="flex flex-wrap justify-center items-center gap-12 opacity-70">
+              <div className="flex flex-wrap justify-center items-center gap-12 opacity-80">
                 <div className="flex items-center space-x-3 group hover:opacity-100 transition-opacity">
                   <Globe className="w-8 h-8 text-primary" />
                   <span className="font-bold text-lg">TechCorp</span>
@@ -228,13 +271,14 @@ export default function HomePage() {
                   <span className="font-bold text-lg">CloudScale</span>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>
 
+      {/* ============================== DEMO SECTION ============================== */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
-        <div className="max-w-6xl mx-auto">
+        <motion.div {...fadeUp(0)} className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-foreground mb-4">See TicketFlow AI in Action</h2>
             <p className="text-xl text-muted-foreground">Watch how our AI processes tickets in real-time</p>
@@ -264,11 +308,16 @@ export default function HomePage() {
                   const isCompleted = demoStep > index
 
                   return (
-                    <div key={index} className="text-center">
+                    <motion.div
+                      key={index}
+                      animate={{ scale: isActive ? 1.05 : 1, opacity: isCompleted ? 0.9 : 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="text-center"
+                    >
                       <div
                         className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center transition-all duration-500 ${
                           isActive
-                            ? "bg-primary text-primary-foreground scale-110 shadow-lg"
+                            ? "bg-primary text-primary-foreground shadow-lg"
                             : isCompleted
                               ? "bg-primary/20 text-primary"
                               : "bg-muted text-muted-foreground"
@@ -287,18 +336,18 @@ export default function HomePage() {
                       {index < demoSteps.length - 1 && (
                         <ChevronRight className="w-6 h-6 text-muted-foreground mx-auto mt-4 hidden md:block" />
                       )}
-                    </div>
+                    </motion.div>
                   )
                 })}
               </div>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
       </section>
 
-      {/* Problem Statement */}
+      {/* ============================ PROBLEM STATEMENT =========================== */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+        <motion.div {...fadeUp(0)} className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-foreground mb-6">IT Support Shouldn't Be This Hard</h2>
             <p className="text-xl text-muted-foreground max-w-4xl mx-auto leading-relaxed">
@@ -365,12 +414,12 @@ export default function HomePage() {
               </CardContent>
             </Card>
           </div>
-        </div>
+        </motion.div>
       </section>
 
-      {/* Solution Overview */}
+      {/* ============================ SOLUTION OVERVIEW =========================== */}
       <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
-        <div className="max-w-7xl mx-auto">
+        <motion.div {...fadeUp(0)} className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-foreground mb-6">AI-Powered IT Support That Actually Works</h2>
             <p className="text-xl text-muted-foreground max-w-4xl mx-auto leading-relaxed">
@@ -496,12 +545,12 @@ export default function HomePage() {
               <p className="text-sm text-muted-foreground">SOC 2 Type II compliant</p>
             </Card>
           </div>
-        </div>
+        </motion.div>
       </section>
 
-      {/* How It Works */}
+      {/* ============================== HOW IT WORKS ============================= */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+        <motion.div {...fadeUp(0)} className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-foreground mb-4">How TicketFlow AI Works</h2>
             <p className="text-xl text-muted-foreground">Four simple steps to transform your IT support workflow</p>
@@ -530,22 +579,22 @@ export default function HomePage() {
                 description: "System learns from resolutions to improve accuracy and recommendations over time",
               },
             ].map((item, index) => (
-              <div key={index} className="text-center">
-                <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">
+              <motion.div key={index} whileHover={{ y: -2 }} className="text-center">
+                <div className="w-12 h-12 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4 shadow-sm">
                   {item.step}
                 </div>
                 <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
                 <p className="text-muted-foreground text-sm">{item.description}</p>
                 {index < 3 && <ChevronRight className="w-6 h-6 text-muted-foreground mx-auto mt-4 hidden md:block" />}
-              </div>
+              </motion.div>
             ))}
           </div>
-        </div>
+        </motion.div>
       </section>
 
-      {/* Social Proof & Testimonials */}
+      {/* ======================= SOCIAL PROOF & TESTIMONIALS ====================== */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
-        <div className="max-w-7xl mx-auto">
+        <motion.div {...fadeUp(0)} className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-foreground mb-4">Trusted by IT Teams Worldwide</h2>
             <p className="text-xl text-muted-foreground">
@@ -649,13 +698,13 @@ export default function HomePage() {
               <p className="text-muted-foreground">Enterprise Customers</p>
             </div>
           </div>
-        </div>
+        </motion.div>
       </section>
 
-      {/* CTA Section */}
+      {/* ================================== CTA ================================== */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1)_1px,transparent_1px)] bg-[length:20px_20px] opacity-20" />
-        <div className="max-w-5xl mx-auto text-center relative">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[length:22px_22px] opacity-20" />
+        <motion.div {...fadeUp(0)} className="max-w-5xl mx-auto text-center relative">
           <h2 className="text-4xl font-bold mb-6">Ready to Transform Your IT Support?</h2>
           <p className="text-xl mb-8 opacity-90 max-w-3xl mx-auto leading-relaxed">
             Join hundreds of IT teams already using TicketFlow AI to deliver exceptional support experiences. Start your
@@ -695,10 +744,10 @@ export default function HomePage() {
               Setup in minutes
             </div>
           </div>
-        </div>
+        </motion.div>
       </section>
 
-      {/* Footer */}
+      {/* ================================= FOOTER ================================ */}
       <footer className="bg-background border-t border-border py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-4 gap-8">
@@ -794,7 +843,7 @@ export default function HomePage() {
           </div>
 
           <div className="border-t border-border mt-8 pt-8 flex flex-col md:flex-row justify-between items-center">
-            <p className="text-sm text-muted-foreground">© 2024 TicketFlow AI. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} TicketFlow AI. All rights reserved.</p>
             <div className="flex space-x-6 mt-4 md:mt-0">
               <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Privacy
@@ -810,5 +859,17 @@ export default function HomePage() {
         </div>
       </footer>
     </div>
+  )
+}
+
+/* ------------------------------ PAGE WRAPPER ------------------------------ */
+/** Since you don't have a ThemeProvider yet, we mount one here so the dark/light
+ *  toggle works immediately. For production, consider moving this to app/layout.tsx.
+ */
+export default function HomePage() {
+  return (
+    
+      <PageContent />
+    
   )
 }
