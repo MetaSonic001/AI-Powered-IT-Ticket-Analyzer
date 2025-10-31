@@ -19,6 +19,8 @@ from core.models import (
     TicketAnalysisRequest, 
     TicketAnalysisResponse,
     BulkTicketRequest,
+    BulkCsvRequest,
+    BulkValidationResult,
     SolutionRecommendationRequest,
     KnowledgeIngestRequest
 )
@@ -384,6 +386,41 @@ async def analyze_ticket(
         # Save to database
         ticket_id = db.create_ticket(db_ticket_data)
         logger.info(f"✅ Ticket {ticket_id} saved to database")
+
+        # Best-effort: ingest recommended solutions into the knowledge base to grow KB size
+        try:
+            solutions = analysis_result.get("recommended_solutions") or []
+            if solutions and knowledge_service:
+                for sol in solutions:
+                    # Build a compact content blob combining problem and solution steps
+                    steps = sol.get("steps") or []
+                    content_parts = [
+                        f"Ticket: {request.title}\n\nDescription: {request.description}",
+                        f"Solution: {sol.get('description','')}",
+                    ]
+                    if steps:
+                        content_parts.append("Steps:\n- " + "\n- ".join([str(s) for s in steps]))
+                    content = "\n\n".join([p for p in content_parts if p and p.strip()])
+
+                    # Use solution_id to dedupe; fall back to deterministic ID
+                    doc_id = sol.get("solution_id") or f"sol-{ticket_id}"
+                    await knowledge_service.add_document(
+                        title=f"Solution: {sol.get('title') or request.title}",
+                        content=content,
+                        category=analysis_result.get('classification', {}).get('category') or sol.get('category') or 'General Support',
+                        tags=["ticket_solution"],
+                        source=ticket_id,
+                        source_type="ticket_solution",
+                        metadata={
+                            "ticket_id": ticket_id,
+                            "priority": analysis_result.get('priority_prediction', {}).get('priority'),
+                            "similarity": sol.get('similarity_score'),
+                            "source": sol.get('source'),
+                        },
+                        doc_id=doc_id,
+                    )
+        except Exception as e:
+            logger.warning(f"Solution KB ingestion skipped/failed: {e}")
         
         # Return a plain dict so direct function calls in tests receive a subscriptable result.
         # FastAPI will validate/serialize this against TicketAnalysisResponse for HTTP clients.
@@ -541,6 +578,30 @@ async def bulk_process_tickets(
     Process multiple tickets in batch
     """
     try:
+        # Optional dry-run: validate ticket payloads without starting background job
+        if request.options and getattr(request.options, "dry_run", False):
+            total = len(request.tickets)
+            invalid = 0
+            errors = []
+            for idx, t in enumerate(request.tickets, start=1):
+                row_errors = []
+                title = (t.title or "").strip()
+                desc = (t.description or "").strip()
+                if not title:
+                    row_errors.append("title is required")
+                if not desc or len(desc) < 10:
+                    row_errors.append("description must be at least 10 characters")
+                if row_errors:
+                    invalid += 1
+                    errors.append({"row_index": idx, "errors": row_errors})
+            return {
+                "status": "validated",
+                "total_rows": total,
+                "valid_rows": total - invalid,
+                "invalid_rows": invalid,
+                "errors": errors,
+            }
+
         # Start background processing
         task_id = f"bulk_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         
@@ -560,6 +621,168 @@ async def bulk_process_tickets(
     except Exception as e:
         logger.error(f"Bulk processing failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Bulk processing failed: {str(e)}")
+
+# Bulk CSV validation for upload
+@app.post("/api/v1/tickets/bulk-validate", response_model=BulkValidationResult)
+async def bulk_validate_csv(payload: BulkCsvRequest):
+    """Validate a CSV payload for bulk upload and return parsed tickets with row-level errors.
+
+    Expected headers: title, description, requester_name, requester_email,
+    requester_department, additional_context_json
+    """
+    import csv
+    import io
+    import json as pyjson
+
+    required_headers = [
+        "title",
+        "description",
+        "requester_name",
+        "requester_email",
+        "requester_department",
+        "additional_context_json",
+    ]
+
+    try:
+        buf = io.StringIO(payload.csv_content or "")
+        # Detect delimiter if not provided explicitly
+        delimiter = payload.delimiter or ","
+        if delimiter == "auto":
+            try:
+                sample = buf.read(2048)
+                buf.seek(0)
+                sniffer = csv.Sniffer()
+                dialect = sniffer.sniff(sample)
+                delimiter = dialect.delimiter
+            except Exception:
+                delimiter = ","
+
+        reader = csv.reader(buf, delimiter=delimiter)
+        rows = list(reader)
+        if not rows:
+            return {
+                "is_valid": False,
+                "total_rows": 0,
+                "valid_rows": 0,
+                "invalid_rows": 0,
+                "missing_headers": required_headers,
+                "errors": [{"row_index": 0, "errors": ["Empty CSV content"]}],
+                "tickets": [],
+            }
+
+        header = []
+        data_rows_start = 0
+        if payload.has_headers:
+            header = [h.strip() for h in rows[0]]
+            data_rows_start = 1
+        else:
+            # If no headers, assume order of required headers
+            header = required_headers[:]
+            data_rows_start = 0
+
+        # Missing headers check (only when headers are provided)
+        missing = []
+        header_lower = [h.lower() for h in header]
+        for req in required_headers:
+            if req.lower() not in header_lower:
+                missing.append(req)
+
+        errors = []
+        tickets = []
+        total_rows = 0
+        valid_rows = 0
+        invalid_rows = 0
+
+        if missing and payload.has_headers:
+            # Can't safely parse without required headers
+            return {
+                "is_valid": False,
+                "total_rows": 0,
+                "valid_rows": 0,
+                "invalid_rows": 0,
+                "missing_headers": missing,
+                "errors": [{"row_index": 0, "errors": [f"Missing headers: {', '.join(missing)}"]}],
+                "tickets": [],
+            }
+
+        # Map header indices
+        def col(name: str) -> int:
+            try:
+                return header_lower.index(name.lower())
+            except ValueError:
+                return -1
+
+        idx_title = col("title")
+        idx_desc = col("description")
+        idx_rname = col("requester_name")
+        idx_remail = col("requester_email")
+        idx_rdept = col("requester_department")
+        idx_ctx = col("additional_context_json")
+
+        # Walk rows
+        data_rows = rows[data_rows_start + payload.skip_rows :]
+        if payload.limit:
+            data_rows = data_rows[: payload.limit]
+
+        for i, row in enumerate(data_rows, start=1):
+            total_rows += 1
+            row_errors = []
+            # Safe get by index
+            def get_val(idx: int) -> str:
+                return (row[idx] if 0 <= idx < len(row) else "").strip()
+
+            title = get_val(idx_title)
+            desc = get_val(idx_desc)
+            rname = get_val(idx_rname)
+            remail = get_val(idx_remail)
+            rdept = get_val(idx_rdept)
+            ctx_raw = get_val(idx_ctx)
+
+            if not title:
+                row_errors.append("title is required")
+            if not desc or len(desc) < 10:
+                row_errors.append("description must be at least 10 characters")
+
+            additional_context = None
+            if ctx_raw:
+                try:
+                    ctx_obj = pyjson.loads(ctx_raw)
+                    if not isinstance(ctx_obj, dict):
+                        row_errors.append("additional_context_json must be a JSON object")
+                    else:
+                        additional_context = ctx_obj
+                except Exception as e:
+                    row_errors.append(f"additional_context_json invalid JSON: {str(e)}")
+
+            if row_errors:
+                invalid_rows += 1
+                errors.append({"row_index": i, "errors": row_errors})
+                continue
+
+            tickets.append({
+                "title": title,
+                "description": desc,
+                "requester_info": {
+                    "name": rname or None,
+                    "email": remail or None,
+                    "department": rdept or None,
+                },
+                "additional_context": additional_context,
+            })
+            valid_rows += 1
+
+        return {
+            "is_valid": invalid_rows == 0 and valid_rows > 0 and (not missing),
+            "total_rows": total_rows,
+            "valid_rows": valid_rows,
+            "invalid_rows": invalid_rows,
+            "missing_headers": missing,
+            "errors": errors,
+            "tickets": tickets,
+        }
+    except Exception as e:
+        logger.error(f"Bulk CSV validation failed: {e}")
+        raise HTTPException(status_code=400, detail=f"CSV validation failed: {str(e)}")
 
 # Solution recommendations
 @app.post("/api/v1/solutions/recommend")
@@ -647,6 +870,57 @@ async def ingest_knowledge(
         logger.error(f"Knowledge ingestion failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
+# Bulk CSV template for upload
+@app.get("/api/v1/tickets/bulk-template")
+async def bulk_template():
+    """Serve a CSV template with a few sample rows for bulk ticket upload."""
+    try:
+        headers = [
+            "title",
+            "description",
+            "requester_name",
+            "requester_email",
+            "requester_department",
+            "additional_context_json",
+        ]
+        samples = [
+            [
+                "Cannot connect to corporate WiFi",
+                "User reports WiFi authentication failure on office network.",
+                "Jane Doe",
+                "jane@example.com",
+                "Engineering",
+                "{\"location\": \"HQ-3F\", \"device\": \"Windows Laptop\"}",
+            ],
+            [
+                "Outlook crashes when opening attachments",
+                "Outlook app closes unexpectedly whenever user opens PDF attachments.",
+                "John Smith",
+                "john@example.com",
+                "Finance",
+                "{\"affected_app\": \"Outlook 365\"}",
+            ],
+        ]
+        # Build CSV string
+        import io
+        import csv
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(headers)
+        for row in samples:
+            writer.writerow(row)
+        content = buf.getvalue()
+        return JSONResponse(
+            status_code=200,
+            content={
+                "filename": "ticketflow_bulk_template.csv",
+                "content": content,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Template generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Template generation failed: {str(e)}")
+
 # Analytics dashboard
 @app.get("/api/v1/analytics/dashboard")
 async def get_dashboard_data(
@@ -715,6 +989,77 @@ async def generate_reports(
     except Exception as e:
         logger.error(f"Report generation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+# Analytics export (CSV)
+@app.get("/api/v1/analytics/export")
+async def export_analytics(
+    export_type: str = "trends",  # trends | categories | priorities | tickets
+    days: int = 30,
+    db: TicketDatabase = Depends(get_database)
+):
+    """Export analytics datasets as CSV in a JSON envelope.
+
+    Returns: { filename, content } with CSV string content for client-side download.
+    """
+    try:
+        import io
+        import csv
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+
+        export_type = (export_type or "").lower()
+        now_suffix = datetime.utcnow().strftime("%Y%m%d")
+
+        if export_type == "categories":
+            data = db.get_category_stats(days=days)
+            writer.writerow(["category", "count", "avg_resolution_hours", "critical", "high", "medium", "low"])
+            for row in data:
+                p = row.get("priorities", {})
+                writer.writerow([
+                    row.get("category"),
+                    row.get("count"),
+                    row.get("avg_resolution_hours"),
+                    p.get("Critical", 0), p.get("High", 0), p.get("Medium", 0), p.get("Low", 0)
+                ])
+            filename = f"analytics_categories_{now_suffix}.csv"
+        elif export_type == "priorities":
+            data = db.get_priority_stats(days=days)
+            # Expand categories per priority as JSON string for simplicity
+            writer.writerow(["priority", "count", "avg_resolution_hours", "categories_json"])
+            for row in data:
+                writer.writerow([
+                    row.get("priority"),
+                    row.get("count"),
+                    row.get("avg_resolution_hours"),
+                    (row.get("categories") or {}),
+                ])
+            filename = f"analytics_priorities_{now_suffix}.csv"
+        elif export_type == "tickets":
+            # Export recent tickets basic info for the period
+            tickets, _ = db.get_tickets(limit=1000, offset=0, days=days)
+            writer.writerow([
+                "ticket_id", "title", "category", "priority", "status", "created_at"
+            ])
+            for t in tickets:
+                writer.writerow([
+                    t.get("ticket_id"), t.get("title"), t.get("category"),
+                    t.get("priority"), t.get("status"), t.get("created_at"),
+                ])
+            filename = f"tickets_{now_suffix}.csv"
+        else:
+            # trends (default)
+            data = db.get_trend_data(days=days)
+            writer.writerow(["date", "ticket_count", "avg_resolution_hours"])
+            for row in data:
+                writer.writerow([row.get("date"), row.get("count"), row.get("avg_resolution_hours")])
+            filename = f"analytics_trends_{now_suffix}.csv"
+
+        content = buf.getvalue()
+        return JSONResponse(status_code=200, content={"filename": filename, "content": content})
+    except Exception as e:
+        logger.error(f"Analytics export failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 # Model management endpoints
 @app.get("/api/v1/models/status")

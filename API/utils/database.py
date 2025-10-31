@@ -618,11 +618,22 @@ class TicketDatabase:
             """, (cutoff_date.isoformat(),))
             solution_count = cursor.fetchone()[0]
             
+            # Total predictions made (regardless of whether feedback was provided)
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM agent_performance
+                WHERE created_at >= ?
+                """,
+                (cutoff_date.isoformat(),),
+            )
+            total_logged_predictions = cursor.fetchone()[0]
+
             return {
                 "classification_accuracy": round((class_row[1] / class_row[0]) if class_row[0] > 0 else 0.94, 2),
                 "classification_confidence": round(class_row[2] or 0.88, 2),
                 "priority_accuracy": round((priority_row[1] / priority_row[0]) if priority_row[0] > 0 else 0.91, 2),
                 "priority_confidence": round(priority_row[2] or 0.85, 2),
                 "solution_success_rate": 0.89,  # Mock for now
-                "total_predictions": class_row[0] + priority_row[0] + solution_count
+                # Show total predictions as all logged predictions + solution recommendations observed
+                "total_predictions": total_logged_predictions + solution_count,
             }

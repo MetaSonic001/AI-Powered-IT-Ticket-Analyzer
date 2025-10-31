@@ -91,6 +91,7 @@ class BulkProcessingOptions(BaseModel):
     include_classification: bool = True
     max_concurrent: int = Field(default=5, ge=1, le=20)
     save_results: bool = True
+    dry_run: bool = False
 
 class BulkTicketRequest(BaseModel):
     """Request model for bulk ticket processing"""
@@ -116,6 +117,36 @@ class KnowledgeIngestRequest(BaseModel):
         if not v.strip():
             raise ValueError("Source cannot be empty")
         return v.strip()
+
+class BulkCsvRequest(BaseModel):
+    """CSV payload for bulk validation/upload flows"""
+    csv_content: str = Field(..., description="Raw CSV content as a UTF-8 string")
+    delimiter: Optional[str] = Field(default=",", description="CSV delimiter, default ','")
+    has_headers: bool = Field(default=True, description="Whether the first row contains headers")
+    skip_rows: int = Field(default=0, ge=0, description="Number of leading rows to skip after headers (if any)")
+    limit: Optional[int] = Field(default=None, ge=1, le=5000, description="Optional max number of rows to parse")
+
+class BulkRowError(BaseModel):
+    row_index: int
+    errors: List[str]
+
+class BulkValidationResult(BaseModel):
+    """Result of validating a bulk CSV input"""
+    is_valid: bool
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    required_headers: List[str] = [
+        "title",
+        "description",
+        "requester_name",
+        "requester_email",
+        "requester_department",
+        "additional_context_json",
+    ]
+    missing_headers: List[str] = []
+    errors: List[BulkRowError] = []
+    tickets: List[BulkTicketItem] = []
 
 # Response Models
 class ClassificationResult(BaseModel):
@@ -331,7 +362,7 @@ __all__ = [
     # Request Models
     "RequesterInfo", "TicketAnalysisRequest", "BulkTicketItem", 
     "BulkProcessingOptions", "BulkTicketRequest", "SolutionRecommendationRequest",
-    "KnowledgeIngestRequest",
+    "KnowledgeIngestRequest", "BulkCsvRequest", "BulkValidationResult", "BulkRowError",
     # Response Models
     "ClassificationResult", "PriorityPrediction", "SolutionRecommendation",
     "TicketAnalysisResponse",

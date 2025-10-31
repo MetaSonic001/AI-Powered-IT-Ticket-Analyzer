@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ArrowLeft, Upload, File, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
+import { ArrowLeft, Upload, File, CheckCircle, AlertCircle, Loader2, Download } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { useState as useFileState } from "react"
@@ -55,6 +55,32 @@ export default function BulkTicketPage() {
     }
   }
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const res = await fetch(`${API_URL}/api/v1/tickets/bulk-template`)
+      if (!res.ok) throw new Error('Failed to fetch CSV template')
+      const data = await res.json()
+      const filename = data.filename || 'ticketflow_bulk_template.csv'
+      const content = data.content as string
+
+      // Trigger client-side download
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast.success('CSV template downloaded')
+    } catch (error) {
+      logFallbackUsage('/api/v1/tickets/bulk-template', error)
+      toast.error(error instanceof Error ? error.message : 'Download failed - API unavailable')
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="mb-8">
@@ -81,6 +107,10 @@ export default function BulkTicketPage() {
                 onChange={handleFileChange}
                 className="flex-1"
               />
+              <Button variant="secondary" onClick={handleDownloadTemplate} disabled={loading}>
+                <Download className="w-4 h-4 mr-2" />
+                Download CSV template
+              </Button>
               <Button onClick={handleUpload} disabled={loading || !file}>
                 {loading ? (
                   <>

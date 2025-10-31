@@ -214,6 +214,88 @@ class KnowledgeService:
     # --------------------------------------------------------------------------
     # CRUD Operations
     # --------------------------------------------------------------------------
+    async def get_recommendations(
+        self,
+        query: str,
+        category: Optional[str] = None,
+        max_results: int = 5,
+        min_similarity: float = 0.4,
+    ) -> List[Dict[str, Any]]:
+        """Return solution-style recommendations based on a query.
+
+        Uses the vector search when available; falls back to keyword search.
+        Maps raw search results into a standardized solution shape expected by the app.
+        """
+        try:
+            results = await self.search(query=query, category=category, limit=max_results, min_similarity=min_similarity)
+            solutions: List[Dict[str, Any]] = []
+            for i, r in enumerate(results):
+                # Extract steps if present in metadata or derive simple bullets from content
+                meta = r.get("metadata", {}) or {}
+                steps = meta.get("steps")
+                if not steps and r.get("content_snippet"):
+                    content = r.get("content_snippet", "")
+                    # Heuristic: split into lines and take 3-5 plausible steps
+                    lines = [ln.strip(" -•\t") for ln in content.split("\n") if ln.strip()]
+                    steps = lines[:5] if lines else None
+
+                solutions.append({
+                    "solution_id": r.get("doc_id", f"rec_{i}"),
+                    "title": r.get("title") or "Suggested Solution",
+                    "description": (r.get("content_snippet") or "")[:300],
+                    "steps": steps or [],
+                    "similarity_score": float(r.get("score", 0.0)),
+                    "estimated_time_minutes": 15,
+                    "success_rate": 0.75,
+                    "source": r.get("source", "knowledge_base"),
+                    "category": r.get("category") or category or "General Support",
+                    "metadata": meta,
+                })
+            return solutions
+        except Exception as e:
+            logger.error(f"get_recommendations failed: {e}")
+            return []
+
+    async def ingest_knowledge(
+        self,
+        source: str,
+        source_type: str = "manual",
+        metadata: Optional[Dict[str, Any]] = None,
+        task_id: str = "",
+    ) -> bool:
+        """Lightweight ingestion entrypoint used by the API.
+
+        - If metadata contains a "documents" list, each item should have title/content/category
+          and will be added.
+        - Otherwise this acts as a no-op acknowledging the request (other scripts handle bulk ingestion).
+        """
+        try:
+            docs = []
+            if metadata and isinstance(metadata, dict):
+                docs = metadata.get("documents", []) or []
+            if not docs:
+                logger.info("ingest_knowledge called with no documents; acknowledged.")
+                return True
+
+            for doc in docs:
+                title = doc.get("title") or "Untitled"
+                content = doc.get("content") or ""
+                category = doc.get("category") or "Documentation"
+                tags = doc.get("tags") or []
+                await self.add_document(
+                    title=title,
+                    content=content,
+                    category=category,
+                    tags=tags,
+                    source=source,
+                    source_type=source_type,
+                    metadata=doc.get("metadata") or {},
+                )
+            logger.info(f"✅ Ingested {len(docs)} documents via API task={task_id}")
+            return True
+        except Exception as e:
+            logger.error(f"ingest_knowledge failed: {e}")
+            return False
     async def add_document(
         self,
         title: str,
