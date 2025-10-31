@@ -32,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <NextThemesProvider attribute="class" defaultTheme="light" enableSystem>
           <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
         </NextThemesProvider>
