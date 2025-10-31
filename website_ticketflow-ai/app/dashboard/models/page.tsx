@@ -22,7 +22,8 @@ export default function ModelsPage() {
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch('/api/v1/models/status')
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${API_URL}/api/v1/models/status`)
       if (!response.ok) throw new Error('Failed to fetch model status')
       const result = await response.json()
       setData(result)

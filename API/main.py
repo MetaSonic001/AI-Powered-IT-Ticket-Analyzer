@@ -20,8 +20,7 @@ from core.models import (
     TicketAnalysisResponse,
     BulkTicketRequest,
     SolutionRecommendationRequest,
-    KnowledgeIngestRequest,
-    DashboardResponse
+    KnowledgeIngestRequest
 )
 from agents.workflow_manager import WorkflowManager
 from services.knowledge_service import KnowledgeService
@@ -29,6 +28,7 @@ from services.data_service import DataService
 from services.model_service import ModelService
 from utils.logger import setup_logger
 from utils.ledger_sqlite import SqliteLedger
+from utils.database import TicketDatabase
 from scripts.datasets import ingest_folder, Embedder
 
 # Setup logging
@@ -39,17 +39,23 @@ workflow_manager: WorkflowManager = None
 knowledge_service: KnowledgeService = None
 data_service: DataService = None
 model_service: ModelService = None
+ticket_db: TicketDatabase = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events"""
-    global workflow_manager, knowledge_service, data_service, model_service
+    global workflow_manager, knowledge_service, data_service, model_service, ticket_db
     
     logger.info("🚀 Starting IT Ticket Analyzer API...")
     
     try:
         # Initialize settings
         settings = get_settings()
+        
+        # Initialize database
+        logger.info("Initializing database...")
+        db_path = Path(settings.data_dir) / "tickets.db"
+        ticket_db = TicketDatabase(str(db_path))
         
         # Initialize services
         logger.info("Initializing services...")
@@ -155,6 +161,11 @@ async def get_data_service() -> DataService:
     if not data_service:
         raise HTTPException(status_code=503, detail="Data service not initialized")
     return data_service
+
+def get_database() -> TicketDatabase:
+    if not ticket_db:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+    return ticket_db
 # Ledger stats endpoint
 @app.get("/api/v1/knowledge/ledger")
 async def get_ledger(
@@ -326,10 +337,12 @@ async def health_check():
 @app.post("/api/v1/tickets/analyze", response_model=TicketAnalysisResponse)
 async def analyze_ticket(
     request: TicketAnalysisRequest,
-    workflow: WorkflowManager = Depends(get_workflow_manager)
+    workflow: WorkflowManager = Depends(get_workflow_manager),
+    db: TicketDatabase = Depends(get_database)
 ):
     """
     Comprehensive ticket analysis using LangGraph multi-agent workflow
+    Saves results to database for history and analytics
     """
     try:
         logger.info(f"Analyzing ticket: {request.title[:50]}...")
@@ -341,6 +354,36 @@ async def analyze_ticket(
             requester_info=request.requester_info,
             additional_context=request.additional_context
         )
+        
+        # Prepare data for database storage
+        requester_info = request.requester_info
+        db_ticket_data = {
+            'ticket_id': analysis_result['ticket_id'],
+            'title': request.title,
+            'description': request.description,
+            'category': analysis_result['classification']['category'],
+            'subcategory': analysis_result['classification'].get('subcategory'),
+            'classification_confidence': analysis_result['classification']['confidence'],
+            'classification_reasoning': analysis_result['classification'].get('reasoning'),
+            'priority': analysis_result['priority_prediction']['priority'],
+            'priority_confidence': analysis_result['priority_prediction']['confidence'],
+            'estimated_resolution_hours': analysis_result['priority_prediction'].get('estimated_resolution_hours'),
+            'priority_reasoning': analysis_result['priority_prediction'].get('reasoning'),
+            'requester_name': requester_info.name if requester_info else None,
+            'requester_email': requester_info.email if requester_info else None,
+            'requester_department': requester_info.department if requester_info else None,
+            'requester_info': requester_info.model_dump() if requester_info else None,
+            'processing_time_ms': analysis_result.get('processing_time_ms'),
+            'summary': analysis_result.get('summary'),
+            'suggested_assignee': analysis_result.get('suggested_assignee'),
+            'tags': analysis_result.get('tags'),
+            'recommended_solutions': analysis_result.get('recommended_solutions', []),
+            'track_performance': True  # Enable performance tracking
+        }
+        
+        # Save to database
+        ticket_id = db.create_ticket(db_ticket_data)
+        logger.info(f"✅ Ticket {ticket_id} saved to database")
         
         # Return a plain dict so direct function calls in tests receive a subscriptable result.
         # FastAPI will validate/serialize this against TicketAnalysisResponse for HTTP clients.
@@ -428,6 +471,64 @@ async def predict_priority(
     except Exception as e:
         logger.error(f"Priority prediction failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Priority prediction failed: {str(e)}")
+
+# Get ticket history
+@app.get("/api/v1/tickets/history")
+async def get_ticket_history(
+    limit: int = 50,
+    offset: int = 0,
+    category: Optional[str] = None,
+    priority: Optional[str] = None,
+    status: Optional[str] = None,
+    days: Optional[int] = None,
+    db: TicketDatabase = Depends(get_database)
+):
+    """
+    Get ticket history with filtering and pagination
+    """
+    try:
+        tickets, total_count = db.get_tickets(
+            limit=limit,
+            offset=offset,
+            category=category,
+            priority=priority,
+            status=status,
+            days=days
+        )
+        
+        return {
+            "tickets": tickets,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error(f"Ticket history retrieval failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get ticket history: {str(e)}")
+
+# Get single ticket
+@app.get("/api/v1/tickets/{ticket_id}")
+async def get_ticket_details(
+    ticket_id: str,
+    db: TicketDatabase = Depends(get_database)
+):
+    """
+    Get detailed information for a specific ticket
+    """
+    try:
+        ticket = db.get_ticket(ticket_id)
+        
+        if not ticket:
+            raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+        
+        return ticket
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ticket retrieval failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get ticket: {str(e)}")
 
 # Bulk ticket processing
 @app.post("/api/v1/tickets/bulk-process")
@@ -547,17 +648,45 @@ async def ingest_knowledge(
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
 # Analytics dashboard
-@app.get("/api/v1/analytics/dashboard", response_model=DashboardResponse)
+@app.get("/api/v1/analytics/dashboard")
 async def get_dashboard_data(
     days: int = 30,
-    data_service: DataService = Depends(get_data_service)
+    db: TicketDatabase = Depends(get_database)
 ):
     """
-    Get dashboard analytics data
+    Get dashboard analytics data from database
     """
     try:
-        dashboard_data = await data_service.get_dashboard_analytics(days=days)
-        return DashboardResponse(**dashboard_data)
+        # Get metrics from database
+        metrics = db.get_dashboard_metrics(days=days)
+        category_stats = db.get_category_stats(days=days)
+        priority_stats = db.get_priority_stats(days=days)
+        trend_data = db.get_trend_data(days=days)
+        
+        # Get recent tickets
+        recent_tickets, _ = db.get_tickets(limit=10, days=days)
+        
+        # Format response
+        return {
+            "total_tickets": metrics["total_tickets"],
+            "avg_processing_time": metrics["avg_processing_time"],
+            "classification_accuracy": metrics["classification_accuracy"],
+            "knowledge_base_size": metrics["knowledge_base_size"],
+            "category_breakdown": category_stats,
+            "priority_breakdown": priority_stats,
+            "trend_data": trend_data,
+            "recent_tickets": [
+                {
+                    "ticket_id": t["ticket_id"],
+                    "title": t["title"],
+                    "category": t["category"],
+                    "priority": t["priority"],
+                    "status": t["status"],
+                    "created_at": t["created_at"]
+                }
+                for t in recent_tickets
+            ]
+        }
         
     except Exception as e:
         logger.error(f"Dashboard data retrieval failed: {str(e)}")
@@ -619,13 +748,17 @@ async def reload_models():
 # Agent performance tracking endpoints
 @app.get("/api/v1/agents/performance")
 async def get_agent_performance(
-    workflow: WorkflowManager = Depends(get_workflow_manager)
+    days: int = 30,
+    db: TicketDatabase = Depends(get_database)
 ):
-    """Get performance statistics for all agents"""
+    """Get performance statistics for all agents from database"""
     try:
-        stats = workflow.get_performance_stats()
+        stats = db.get_agent_performance(days=days)
         return {
-            "performance_stats": stats,
+            "classification_accuracy": stats["classification_accuracy"],
+            "priority_accuracy": stats["priority_accuracy"],
+            "solution_success_rate": stats["solution_success_rate"],
+            "total_predictions": stats["total_predictions"],
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
@@ -638,14 +771,14 @@ async def log_agent_feedback(
     agent: str,
     actual: str,
     feedback_source: str = "user",
-    workflow: WorkflowManager = Depends(get_workflow_manager)
+    db: TicketDatabase = Depends(get_database)
 ):
     """Log feedback for agent performance tracking (for ROI/accuracy measurement)"""
     try:
-        workflow.log_feedback(
+        db.log_agent_feedback(
             ticket_id=ticket_id,
-            agent=agent,
-            actual=actual,
+            agent_name=agent,
+            actual_value=actual,
             feedback_source=feedback_source
         )
         return {

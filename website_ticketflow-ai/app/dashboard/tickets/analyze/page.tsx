@@ -33,7 +33,8 @@ export default function AnalyzeTicketPage() {
     setAnalysis(null)
 
     try {
-      const response = await fetch("/api/v1/tickets/analyze", {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${API_URL}/api/v1/tickets/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

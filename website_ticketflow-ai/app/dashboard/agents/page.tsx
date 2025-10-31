@@ -22,7 +22,8 @@ export default function AgentsPage() {
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch('/api/v1/agents/performance')
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${API_URL}/api/v1/agents/performance`)
       if (!response.ok) throw new Error('Failed to fetch agent performance')
       const result = await response.json()
       setData(result)
