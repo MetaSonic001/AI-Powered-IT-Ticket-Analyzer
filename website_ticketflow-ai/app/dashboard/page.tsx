@@ -1,36 +1,22 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { DashboardLayout } from "@/components/dashboard-layout"
+import { FALLBACK_DASHBOARD_METRICS, logFallbackUsage } from "@/lib/fallback-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { CommandPalette } from "@/components/command-palette"
 import { NotificationCenter } from "@/components/notification-center"
 import {
   Bot,
-  Search,
-  Plus,
   TrendingUp,
   TrendingDown,
   Clock,
   Users,
   Brain,
   BarChart3,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  ChevronRight,
   Activity,
   Target,
   Sparkles,
@@ -44,10 +30,26 @@ import {
   BookOpen,
   PiIcon as PieIcon,
   HelpCircle,
+  X,
+  Menu,
+  Settings,
+  LogOut,
+  Search,
+  Plus,
+  ChevronRight,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 
 // Mock data
 const ticketData = [
@@ -164,7 +166,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <DashboardLayout>
       {/* Command Palette */}
       <CommandPalette open={commandPaletteOpen} setOpen={setCommandPaletteOpen} />
 
@@ -573,10 +575,18 @@ export default function DashboardPage() {
                 <Button
                   variant="outline"
                   className="w-full justify-start bg-transparent"
-                  onClick={() => router.push("/dashboard/team")}
+                  onClick={() => router.push("/dashboard/agents")}
                 >
                   <Users className="w-4 h-4 mr-2" />
-                  Team Management
+                  Agent Performance
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start bg-transparent"
+                  onClick={() => router.push("/dashboard/tickets/bulk")}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Bulk Upload
                 </Button>
               </CardContent>
             </Card>
@@ -588,31 +598,39 @@ export default function DashboardPage() {
                 <CardDescription>AI models and integrations</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-between"
+                  onClick={() => router.push("/dashboard/models")}
+                >
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full" />
+                    <span className="text-sm">AI Models</span>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    View
+                  </Badge>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-between"
+                  onClick={() => router.push("/dashboard/health")}
+                >
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full" />
+                    <span className="text-sm">System Health</span>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    View
+                  </Badge>
+                </Button>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full" />
-                    <span className="text-sm">Classification Model</span>
+                    <span className="text-sm">Knowledge Base</span>
                   </div>
                   <Badge variant="secondary" className="text-xs">
                     Online
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full" />
-                    <span className="text-sm">Recommendation Engine</span>
-                  </div>
-                  <Badge variant="secondary" className="text-xs">
-                    Online
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-yellow-500 rounded-full" />
-                    <span className="text-sm">Analytics Pipeline</span>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    Updating
                   </Badge>
                 </div>
               </CardContent>
@@ -722,6 +740,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </DashboardLayout>
   )
 }

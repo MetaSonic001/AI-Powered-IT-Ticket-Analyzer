@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { DashboardLayout } from "@/components/dashboard-layout"
+import { FALLBACK_SOLUTIONS, logFallbackUsage } from "@/lib/fallback-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -150,41 +152,22 @@ export default function KnowledgeBasePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Top Navigation */}
-      <nav className="bg-background border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/dashboard"
-                className="flex items-center space-x-2 text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back to Dashboard</span>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                New Article
-              </Button>
-            </div>
+    <DashboardLayout>
+      <div className="mb-8">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Knowledge Base</h1>
+            <p className="text-muted-foreground">Search and browse IT solutions</p>
           </div>
+          <Button size="sm">
+            <Plus className="w-4 h-4 mr-2" />
+            New Article
+          </Button>
         </div>
-      </nav>
+      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Knowledge Base</h1>
-          <p className="text-muted-foreground">
-            AI-powered knowledge management with smart search and solution recommendations.
-          </p>
-        </div>
-
-        {/* Search Section */}
-        <Card className="mb-8">
+      {/* Search Section */}
+      <Card className="mb-8">
           <CardContent className="pt-6">
             <div className="relative mb-6">
               <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
@@ -403,7 +386,6 @@ export default function KnowledgeBasePage() {
             </Card>
           </div>
         </div>
-      </div>
-    </div>
+    </DashboardLayout>
   )
 }

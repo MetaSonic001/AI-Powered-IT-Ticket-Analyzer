@@ -1,41 +1,32 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { text } = body
+    console.log("[FastAPI] Classifying ticket:", body)
 
-    console.log("[v0] Classifying ticket text:", text)
+    const response = await fetch(`${API_BASE_URL}/api/v1/tickets/classify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
 
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    const categories = [
-      { name: "Network", confidence: Math.random() * 0.4 + 0.6 },
-      { name: "Software", confidence: Math.random() * 0.4 + 0.6 },
-      { name: "Hardware", confidence: Math.random() * 0.4 + 0.6 },
-      { name: "Security", confidence: Math.random() * 0.4 + 0.6 },
-      { name: "Email", confidence: Math.random() * 0.4 + 0.6 },
-    ]
-
-    // Sort by confidence and return top result
-    categories.sort((a, b) => b.confidence - a.confidence)
-
-    const result = {
-      primaryCategory: categories[0],
-      allCategories: categories,
-      processingTime: "0.5s",
+    if (!response.ok) {
+      const error = await response.json();
+      return NextResponse.json(error, { status: response.status });
     }
 
-    console.log("[v0] Classification result:", result)
-
-    return NextResponse.json({
-      success: true,
-      data: result,
-      timestamp: new Date().toISOString(),
-    })
+    const data = await response.json();
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("[v0] Error classifying ticket:", error)
-    return NextResponse.json({ success: false, error: "Failed to classify ticket" }, { status: 500 })
+    console.error("[FastAPI] Error classifying ticket:", error)
+    return NextResponse.json(
+      { detail: 'Failed to classify ticket' },
+      { status: 500 }
+    );
   }
 }

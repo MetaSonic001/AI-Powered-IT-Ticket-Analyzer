@@ -10,8 +10,7 @@ import numpy as np
 # ML Libraries
 try:
     from transformers import (
-        AutoTokenizer, AutoModel, AutoModelForSequenceClassification,
-        pipeline, TextClassificationPipeline
+        pipeline
     )
     import torch
     TRANSFORMERS_AVAILABLE = True
@@ -427,10 +426,10 @@ class ModelService:
     
     async def _classify_huggingface(self, text: str, categories: List[str], prompt: str = None, few_shot: list = None) -> Dict[str, Any]:
         """Classify using HuggingFace pipeline"""
-        classifier = self.classifiers['huggingface']
+        # classifier = self.classifiers['huggingface']
         # Since most HF classification models are trained on specific datasets,
         # we'll use a keyword-based approach combined with the model's output
-        results = classifier(text)
+        # results = classifier(text)
         # Simple keyword matching for IT categories
         text_lower = text.lower()
         category_keywords = {
@@ -645,5 +644,5 @@ class ModelService:
         try:
             if TRANSFORMERS_AVAILABLE and torch.cuda.is_available():
                 torch.cuda.empty_cache()
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to clear CUDA cache: {str(e)}")

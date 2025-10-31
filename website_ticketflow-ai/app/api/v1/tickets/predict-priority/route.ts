@@ -1,22 +1,28 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { proxyToFastAPI } from "@/lib/api-proxy"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { title, description, category, requester } = body
+    // If you prefer to forward the request to FastAPI, uncomment the following line:
+    // return proxyToFastAPI(request, { endpoint: '/api/v1/tickets/predict-priority', method: 'POST', logPrefix: '[FastAPI Priority]' });
 
-    console.log("[v0] Predicting ticket priority:", { title, description, category, requester })
+    // Safely parse JSON body and extract title/description with fallbacks
+    const body = await request.json().catch(() => ({}))
+    const title = typeof body.title === "string" ? body.title : ""
+    const description = typeof body.description === "string" ? body.description : ""
 
     // Simulate AI priority prediction processing time
     await new Promise((resolve) => setTimeout(resolve, 400))
 
+    const combinedText = `${title} ${description}`.trim()
+
     const priorityPrediction = {
       ticketId: `TF-${Date.now()}`,
       priority: {
-        level: determinePriority(title + " " + description),
+        level: determinePriority(combinedText),
         confidence: Math.random() * 0.2 + 0.8, // 80-100% confidence
-        reasoning: generatePriorityReasoning(title + " " + description),
-        factors: analyzePriorityFactors(title + " " + description),
+        reasoning: generatePriorityReasoning(combinedText),
+        factors: analyzePriorityFactors(combinedText),
       },
       escalation: {
         required: Math.random() > 0.7,
@@ -24,7 +30,7 @@ export async function POST(request: NextRequest) {
         stakeholders: ["IT Manager", "Security Team"],
       },
       slaImpact: {
-        targetResolution: calculateSLATarget(determinePriority(title + " " + description)),
+        targetResolution: calculateSLATarget(determinePriority(combinedText)),
         riskLevel: Math.random() > 0.6 ? "high" : "medium",
         businessImpact: Math.random() > 0.5 ? "critical" : "moderate",
       },

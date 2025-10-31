@@ -1,48 +1,38 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { title, description, category, priority, requester } = body
+    
+    console.log("[FastAPI] Analyzing ticket:", body)
 
-    console.log("[v0] Analyzing ticket:", { title, description, category, priority, requester })
+    // Forward request to FastAPI backend
+    const response = await fetch(`${API_BASE_URL}/api/v1/tickets/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
 
-    // Simulate AI analysis processing time
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    // Mock AI analysis results
-    const analysisResult = {
-      ticketId: `TF-${Date.now()}`,
-      classification: {
-        category: category || determineCategory(title + " " + description),
-        confidence: Math.random() * 0.3 + 0.7, // 70-100% confidence
-        subcategory: determineSubcategory(title + " " + description),
-      },
-      priority: {
-        level: priority || determinePriority(title + " " + description),
-        confidence: Math.random() * 0.2 + 0.8, // 80-100% confidence
-        reasoning: "Based on keywords and historical patterns",
-      },
-      solutions: generateSolutionRecommendations(title + " " + description),
-      estimatedResolutionTime: Math.floor(Math.random() * 8) + 1, // 1-8 hours
-      similarTickets: generateSimilarTickets(),
-      aiInsights: {
-        urgency: Math.random() > 0.7 ? "high" : "medium",
-        complexity: Math.random() > 0.5 ? "complex" : "simple",
-        autoResolvable: Math.random() > 0.8,
-      },
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("[FastAPI] Error response:", error);
+      return NextResponse.json(error, { status: response.status });
     }
 
-    console.log("[v0] Analysis complete:", analysisResult)
+    const data = await response.json();
+    console.log("[FastAPI] Analysis complete");
 
-    return NextResponse.json({
-      success: true,
-      data: analysisResult,
-      timestamp: new Date().toISOString(),
-    })
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("[v0] Error analyzing ticket:", error)
-    return NextResponse.json({ success: false, error: "Failed to analyze ticket" }, { status: 500 })
+    console.error("[FastAPI] Error analyzing ticket:", error)
+    return NextResponse.json(
+      { detail: error instanceof Error ? error.message : 'Failed to analyze ticket' },
+      { status: 500 }
+    );
   }
 }
 

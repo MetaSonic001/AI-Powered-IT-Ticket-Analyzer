@@ -3,8 +3,8 @@ import { proxyToFastAPI } from "@/lib/api-proxy"
 
 export async function POST(request: NextRequest) {
   return proxyToFastAPI(request, {
-    endpoint: '/api/v1/tickets/bulk-process',
+    endpoint: '/api/v1/agents/feedback',
     method: 'POST',
-    logPrefix: '[FastAPI Bulk]'
+    logPrefix: '[FastAPI Feedback]'
   });
 }
