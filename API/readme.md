@@ -6,6 +6,55 @@
 
 Enterprise-grade AI-powered system for automated IT ticket analysis, classification, priority prediction, and solution recommendation using multi-agent architecture.
 
+## 🧩 Problem Statement
+
+IT support teams face high ticket volumes, inconsistent triage, and slow, manual knowledge lookup. Tribal knowledge is scattered across PDFs, wiki pages, and past tickets, making root-cause identification and resolution repeatable only by senior engineers. Leaders also lack clear, real-time metrics on accuracy, turnaround, and ROI of AI-assisted operations.
+
+Key pain points:
+- Long triage cycles and variable prioritization across agents and shifts
+- Repeated issues without capturing and reusing solutions effectively
+- No feedback loop to measure AI prediction accuracy or solution success
+- Mixed infrastructure (local/dev vs Docker/prod) complicates setup and scaling
+
+## ✅ Solution Overview
+
+This system provides an end-to-end, multi-agent platform for automated ticket analysis and solution recommendation backed by a persistent vector knowledge base and real-time analytics.
+
+Highlights:
+- FastAPI backend orchestrating a LangGraph multi-agent workflow (classification, priority, recommendation, QA)
+- Vector search with Chroma (local) or Weaviate (Docker) for RAG-powered solutions
+- SQLite persistence for tickets, solutions, and agent performance stats
+- Resilient fallbacks and safe defaults to keep endpoints usable even when providers are offline
+- Frontend (Next.js) configurable via `NEXT_PUBLIC_API_URL` with clear fallback messaging
+
+What’s included out-of-the-box:
+- Ticket analysis (`/api/v1/tickets/analyze`) that also auto-ingests recommended solutions into the knowledge base to grow it over time
+- Dashboard analytics powered by persisted data (`/api/v1/analytics/dashboard`)
+- Knowledge ingestion utilities and an auto-sync on startup for local data folders
+- Bulk processing and a downloadable CSV template for quick adoption
+
+## 🔌 Integrations
+
+- LLM providers: Groq (primary), Gemini, Ollama; HuggingFace for embeddings when needed
+- Vector DB: Chroma (local persistent) or Weaviate (via docker-compose)
+- Storage: SQLite for operational data, plus a lightweight ledger for ingestion
+- Frontend: Next.js app that consumes APIs via `NEXT_PUBLIC_API_URL`
+
+## 🔁 Key Flows
+
+1) Analyze Ticket → classify → predict priority → recommend solutions → QA → persist to DB → auto-ingest solutions to KB
+2) Bulk Upload → validate CSV → background processing → results to DB and KB
+3) Knowledge Ingestion → ingest files/URLs/datasets → embed → upsert to vector store → ledger recorded
+4) Analytics/Reports → compute aggregates from SQLite → export or visualize
+5) Feedback Loop → log outcomes for accuracy → improve dashboards over time
+
+## 🌟 Benefits
+
+- Faster mean-time-to-resolution (MTTR) with accurate prioritization and ready-to-run steps
+- Consistent triage with auditable reasoning and confidence scores
+- A knowledge base that grows automatically from real solved tickets
+- Real-time visibility into accuracy, throughput, solution effectiveness, and ROI
+
 ## 🌟 Features
 
 - **🤖 Multi-Agent AI System**: Using LangGraph for specialized ticket analysis agents with adaptive routing

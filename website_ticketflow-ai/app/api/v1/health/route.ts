@@ -1,5 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+// Ensure this route is always run dynamically at request time (no prerender)
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function GET(request: NextRequest) {
@@ -12,6 +16,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
       },
+      cache: 'no-store',
     });
 
     if (!response.ok) {

@@ -1,5 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+// Ensure this route is always dynamic (no prerender) and not cached
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function POST(request: NextRequest) {
@@ -12,6 +16,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
       },
+      cache: 'no-store',
       body: JSON.stringify(body),
     });
 
