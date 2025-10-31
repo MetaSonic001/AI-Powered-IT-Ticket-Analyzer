@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
+import apiService from '../services/api';
+import { TicketAnalysisRequest, DashboardMetrics } from '../types/api';
 
 export interface Ticket {
   id: string;
@@ -14,6 +16,7 @@ export interface Ticket {
   estimatedTime: string;
   complexity: 'Low' | 'Medium' | 'High';
   progress: number;
+  ticket_id?: string; // API ticket ID
 }
 
 export interface Stats {
@@ -25,6 +28,8 @@ export interface Stats {
   avgResponseTime: string;
   resolutionRate: number;
   satisfaction: number;
+  // API metrics
+  apiMetrics?: DashboardMetrics;
 }
 
 interface TicketState {
@@ -32,6 +37,8 @@ interface TicketState {
   stats: Stats;
   recentTickets: Ticket[];
   systemAlerts: any[];
+  loading: boolean;
+  error: string | null;
 }
 
 type TicketAction =
@@ -39,9 +46,14 @@ type TicketAction =
   | { type: 'UPDATE_TICKET'; payload: { id: string; updates: Partial<Ticket> } }
   | { type: 'DELETE_TICKET'; payload: string }
   | { type: 'UPDATE_STATS'; payload: Partial<Stats> }
-  | { type: 'INITIALIZE_DATA'; payload: TicketState };
+  | { type: 'INITIALIZE_DATA'; payload: TicketState }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'FETCH_DASHBOARD_SUCCESS'; payload: DashboardMetrics };
 
 const initialState: TicketState = {
+  loading: false,
+  error: null,
   tickets: [
     {
       id: '1',
@@ -160,6 +172,27 @@ const initialState: TicketState = {
 
 function ticketReducer(state: TicketState, action: TicketAction): TicketState {
   switch (action.type) {
+    case 'SET_LOADING': {
+      return { ...state, loading: action.payload };
+    }
+    
+    case 'SET_ERROR': {
+      return { ...state, error: action.payload, loading: false };
+    }
+    
+    case 'FETCH_DASHBOARD_SUCCESS': {
+      return {
+        ...state,
+        stats: {
+          ...state.stats,
+          apiMetrics: action.payload,
+          totalTickets: action.payload.total_tickets_analyzed,
+        },
+        loading: false,
+        error: null,
+      };
+    }
+    
     case 'ADD_TICKET': {
       const newTicket: Ticket = {
         ...action.payload,
@@ -249,16 +282,64 @@ function calculateStats(tickets: Ticket[]): Stats {
   };
 }
 
-const TicketContext = createContext<{
+interface TicketContextType {
   state: TicketState;
   dispatch: React.Dispatch<TicketAction>;
-} | null>(null);
+  // API methods
+  analyzeTicket: (data: TicketAnalysisRequest) => Promise<any>;
+  fetchDashboardMetrics: () => Promise<void>;
+  searchKnowledge: (query: string, category?: string) => Promise<any>;
+}
+
+const TicketContext = createContext<TicketContextType | null>(null);
 
 export function TicketProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(ticketReducer, initialState);
 
+  // Fetch dashboard metrics on mount
+  useEffect(() => {
+    fetchDashboardMetrics();
+  }, []);
+
+  const analyzeTicket = async (data: TicketAnalysisRequest) => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      const response = await apiService.analyzeTicket(data);
+      console.log('Ticket analysis response:', response);
+      dispatch({ type: 'SET_LOADING', payload: false });
+      return response;
+    } catch (error: any) {
+      console.log('Ticket analysis failed:', JSON.stringify(error));
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+      throw error;
+    }
+  };
+
+  const fetchDashboardMetrics = async () => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      const response = await apiService.getDashboardMetrics(30);
+      dispatch({ type: 'FETCH_DASHBOARD_SUCCESS', payload: response.metrics });
+    } catch (error: any) {
+      console.log('Dashboard metrics fetch failed:', error.message);
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+    }
+  };
+
+  const searchKnowledge = async (query: string, category?: string) => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      const response = await apiService.searchKnowledgeBase({ q: query, category, limit: 10 });
+      dispatch({ type: 'SET_LOADING', payload: false });
+      return response;
+    } catch (error: any) {
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+      throw error;
+    }
+  };
+
   return (
-    <TicketContext.Provider value={{ state, dispatch }}>
+    <TicketContext.Provider value={{ state, dispatch, analyzeTicket, fetchDashboardMetrics, searchKnowledge }}>
       {children}
     </TicketContext.Provider>
   );

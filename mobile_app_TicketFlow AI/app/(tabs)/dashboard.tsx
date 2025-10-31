@@ -39,7 +39,7 @@ const { width } = Dimensions.get('window');
 export default function DashboardScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { state } = useTickets();
+  const { state, fetchDashboardMetrics } = useTickets();
   const [refreshing, setRefreshing] = useState(false);
 
   // Animation references
@@ -97,9 +97,14 @@ export default function DashboardScreen() {
   const subTextColor = isDark ? '#9CA3AF' : '#6B7280';
   const backgroundColor = isDark ? '#0F0F23' : '#F8FAFC';
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 2000);
+    try {
+      await fetchDashboardMetrics();
+    } catch (error) {
+      console.error('Failed to refresh dashboard:', error);
+    }
+    setRefreshing(false);
   };
 
   const stats = [

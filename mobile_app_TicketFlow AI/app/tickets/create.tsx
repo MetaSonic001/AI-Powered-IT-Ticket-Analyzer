@@ -38,7 +38,7 @@ import {
 export default function CreateTicketScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { dispatch } = useTickets();
+  const { dispatch, analyzeTicket } = useTickets();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
@@ -143,7 +143,7 @@ export default function CreateTicketScreen() {
     return suggestions[category as keyof typeof suggestions] || 'AI analysis in progress...';
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title.trim() || !description.trim()) {
       Alert.alert('Missing Information', 'Please fill in the title and description to continue');
       return;
@@ -154,28 +154,88 @@ export default function CreateTicketScreen() {
       return;
     }
 
-    // Create new ticket
-    const newTicket = {
-      title: title.trim(),
-      description: description.trim(),
-      priority,
-      status: 'Open' as const,
-      assignee: assignee === 'Auto Assign' ? 'AI Assignment' : assignee,
-      category,
-      gradient: getPriorityGradient(priority),
-      aiSuggestion: generateAISuggestion(title, description, category),
-      estimatedTime: priority === 'Critical' ? '15 min' : priority === 'High' ? '30 min' : '1h',
-      complexity: getComplexityFromPriority(priority)
-    };
+    try {
+      // Validate description length (API requires min 10 characters)
+      if (description.trim().length < 10) {
+        Alert.alert('Description Too Short', 'Please provide a description with at least 10 characters for better AI analysis');
+        return;
+      }
 
-    // Dispatch the action to add the ticket
-    dispatch({ type: 'ADD_TICKET', payload: newTicket });
+      // Prepare API request
+      const analysisRequest = {
+        title: title.trim(),
+        description: description.trim(),
+        requester_info: {
+          name: 'Sarah Johnson',
+          email: 'sarah.johnson@company.com',
+          department: 'IT Support',
+          role: 'IT Administrator',
+          location: 'Mumbai',
+          phone: '+91-9988776655'
+        },
+        additional_context: {
+          priority_override: false
+        }
+      };
 
-    Alert.alert(
-      'Ticket Created Successfully! 🎉',
-      `Your ticket has been created and assigned to ${assignee}. You'll receive updates via email and push notifications.`,
-      [{ text: 'View Dashboard', onPress: () => router.back() }]
-    );
+      console.log('Sending ticket analysis request:', {
+        title: analysisRequest.title,
+        descriptionLength: analysisRequest.description.length,
+        category
+      });
+
+      // Analyze ticket with AI
+      const analysisResult = await analyzeTicket(analysisRequest);
+
+      // Create new ticket with AI analysis
+      const newTicket = {
+        title: title.trim(),
+        description: description.trim(),
+        priority: analysisResult.priority_prediction?.priority || priority,
+        status: 'Open' as const,
+        assignee: analysisResult.suggested_assignee || (assignee === 'Auto Assign' ? 'AI Assignment' : assignee),
+        category: analysisResult.classification?.category || category,
+        gradient: getPriorityGradient(analysisResult.priority_prediction?.priority || priority),
+        aiSuggestion: analysisResult.recommended_solutions?.[0]?.title || generateAISuggestion(title, description, category),
+        estimatedTime: `${analysisResult.priority_prediction?.estimated_resolution_hours || 1}h`,
+        complexity: getComplexityFromPriority(analysisResult.priority_prediction?.priority || priority),
+        ticket_id: analysisResult.ticket_id
+      };
+
+      // Dispatch the action to add the ticket
+      dispatch({ type: 'ADD_TICKET', payload: newTicket });
+
+      Alert.alert(
+        'Ticket Created Successfully! 🎉',
+        `Your ticket has been analyzed by AI and assigned to ${newTicket.assignee}.\n\nAI Confidence: ${Math.round((analysisResult.classification?.confidence || 0.9) * 100)}%\n\nYou'll receive updates via email and push notifications.`,
+        [{ text: 'View Dashboard', onPress: () => router.back() }]
+      );
+    } catch (error: any) {
+      // Fallback to local creation if API fails
+      console.error('API analysis failed, creating ticket locally:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      const newTicket = {
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+        status: 'Open' as const,
+        assignee: assignee === 'Auto Assign' ? 'AI Assignment' : assignee,
+        category,
+        gradient: getPriorityGradient(priority),
+        aiSuggestion: generateAISuggestion(title, description, category),
+        estimatedTime: priority === 'Critical' ? '15 min' : priority === 'High' ? '30 min' : '1h',
+        complexity: getComplexityFromPriority(priority)
+      };
+
+      dispatch({ type: 'ADD_TICKET', payload: newTicket });
+
+      Alert.alert(
+        'Ticket Created! ⚠️',
+        `Your ticket has been created locally (AI analysis unavailable). It will be synced when connection is restored.`,
+        [{ text: 'View Dashboard', onPress: () => router.back() }]
+      );
+    }
   };
 
   const addAttachment = () => {
