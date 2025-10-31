@@ -156,6 +156,12 @@ class TicketAnalysisResponse(BaseModel):
     analysis_metadata: Dict[str, Any] = {}
     processing_time_ms: Optional[float] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Enhanced UX fields
+    summary: Optional[str] = None  # Plain-English summary
+    action_items: Optional[List[Dict[str, Any]]] = None  # Prioritized action items
+    resolution_timeline: Optional[Dict[str, str]] = None  # SLA and timeline info
+    warnings: Optional[List[Dict[str, Any]]] = None  # Confidence warnings
 
 # Analytics Models
 class CategoryStats(BaseModel):

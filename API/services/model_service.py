@@ -58,11 +58,9 @@ class ModelService:
         try:
             logger.info("🤖 Initializing Model Service...")
             
-            # Initialize providers
-            # If external providers are configured, skip Ollama to honor user's preference
+            # Initialize providers based on enabled flags
             await self._init_external_apis()
-            if not (self.settings.groq_api_key or self.settings.gemini_api_key):
-                await self._init_ollama()
+            await self._init_ollama()
             await self._init_huggingface()
             
             # Load default models
@@ -76,8 +74,9 @@ class ModelService:
             raise
     
     async def _init_ollama(self):
-        """Initialize Ollama client"""
+        """Initialize Ollama client if enabled"""
         if not self.settings.use_ollama:
+            logger.info("⏭️  Ollama disabled in configuration")
             return
             
         try:
@@ -100,9 +99,13 @@ class ModelService:
             logger.warning(f"Ollama initialization failed: {str(e)}")
     
     async def _init_huggingface(self):
-        """Initialize Hugging Face models"""
-        if not self.settings.use_huggingface or not TRANSFORMERS_AVAILABLE:
-            logger.warning("Hugging Face transformers not available")
+        """Initialize Hugging Face models if enabled"""
+        if not self.settings.use_huggingface:
+            logger.info("⏭️  HuggingFace disabled in configuration")
+            return
+            
+        if not TRANSFORMERS_AVAILABLE:
+            logger.warning("⚠️  HuggingFace transformers not available (library not installed)")
             return
             
         try:
@@ -139,24 +142,32 @@ class ModelService:
             logger.error(f"HuggingFace initialization failed: {str(e)}")
     
     async def _init_external_apis(self):
-        """Initialize external API clients"""
+        """Initialize external API clients based on enabled flags"""
         
         # Groq
-        if self.settings.groq_api_key and GROQ_AVAILABLE:
+        if self.settings.use_groq and self.settings.groq_api_key and GROQ_AVAILABLE:
             try:
                 self.clients['groq'] = Groq(api_key=self.settings.groq_api_key)
                 logger.info("✅ Groq client initialized")
             except Exception as e:
                 logger.warning(f"Groq initialization failed: {str(e)}")
+        elif self.settings.use_groq and not self.settings.groq_api_key:
+            logger.warning("⚠️  Groq enabled but no API key provided")
+        elif not self.settings.use_groq:
+            logger.info("⏭️  Groq disabled in configuration")
         
         # Gemini
-        if self.settings.gemini_api_key and GEMINI_AVAILABLE:
+        if self.settings.use_gemini and self.settings.gemini_api_key and GEMINI_AVAILABLE:
             try:
                 genai.configure(api_key=self.settings.gemini_api_key)
                 self.clients['gemini'] = genai.GenerativeModel(self.settings.gemini_model)
                 logger.info("✅ Gemini client initialized")
             except Exception as e:
                 logger.warning(f"Gemini initialization failed: {str(e)}")
+        elif self.settings.use_gemini and not self.settings.gemini_api_key:
+            logger.warning("⚠️  Gemini enabled but no API key provided")
+        elif not self.settings.use_gemini:
+            logger.info("⏭️  Gemini disabled in configuration")
 
     # -------- Prompt/token optimization helpers --------
     def _truncate(self, text: str, max_chars: int) -> str:
@@ -256,54 +267,49 @@ class ModelService:
         
         return np.array(embeddings, dtype=np.float32)
     
-    async def classify_text(self, text: str, categories: List[str]) -> Dict[str, Any]:
-        """Classify text into given categories"""
-        # Prefer external APIs if available
+    async def classify_text(self, text: str, categories: List[str], prompt: str = None, few_shot: list = None) -> Dict[str, Any]:
+        """Classify text into given categories, with optional prompt and few-shot"""
         if 'groq' in self.clients:
             try:
-                return await self._classify_groq(text, categories)
+                return await self._classify_groq(text, categories, prompt, few_shot)
             except Exception as e:
                 logger.warning(f"Groq classification failed: {str(e)}")
-        
         if 'gemini' in self.clients:
             try:
-                return await self._classify_gemini(text, categories)
+                return await self._classify_gemini(text, categories, prompt, few_shot)
             except Exception as e:
                 logger.warning(f"Gemini classification failed: {str(e)}")
-        
-        # Try Ollama next
         if 'ollama' in self.clients:
             try:
-                return await self._classify_ollama(text, categories)
+                return await self._classify_ollama(text, categories, prompt, few_shot)
             except Exception as e:
                 logger.warning(f"Ollama classification failed: {str(e)}")
-
-        # Try HuggingFace
         if 'huggingface' in self.classifiers:
             try:
-                return await self._classify_huggingface(text, categories)
+                return await self._classify_huggingface(text, categories, prompt, few_shot)
             except Exception as e:
                 logger.warning(f"HuggingFace classification failed: {str(e)}")
-        
-        # Fallback classification
         return self._fallback_classification(text, categories)
     
-    async def _classify_ollama(self, text: str, categories: List[str]) -> Dict[str, Any]:
+    async def _classify_ollama(self, text: str, categories: List[str], prompt: str = None, few_shot: list = None) -> Dict[str, Any]:
         """Classify using Ollama"""
         
-        prompt = f"""
-        Classify the following IT support ticket into one of these categories:
-        Categories: {', '.join(categories)}
-        
-        Ticket: {text}
-        
-        Respond with only the category name that best matches this ticket.
-        """
+        if prompt:
+            ollama_prompt = prompt
+        else:
+            ollama_prompt = f"""
+            Classify the following IT support ticket into one of these categories:
+            Categories: {', '.join(categories)}
+            
+            Ticket: {text}
+            
+            Respond with only the category name that best matches this ticket.
+            """
         
         async with aiohttp.ClientSession() as session:
             payload = {
                 "model": self.settings.ollama_models['llm'],
-                "prompt": prompt,
+                "prompt": ollama_prompt,
                 "stream": False
             }
             
@@ -321,37 +327,40 @@ class ModelService:
                             return {
                                 "category": category,
                                 "confidence": 0.8,
-                                "reasoning": f"Ollama classification: {predicted_category}"
+                                "reasoning": f"Ollama classification: {predicted_category} (matched {category})"
                             }
                     
                     # Default to first category if no match
                     return {
                         "category": categories[0] if categories else "General Support",
                         "confidence": 0.5,
-                        "reasoning": f"Fallback classification: {predicted_category}"
+                        "reasoning": f"Ollama fallback: {predicted_category}"
                     }
                 else:
                     raise Exception(f"Ollama API error: {response.status}")
     
-    async def _classify_groq(self, text: str, categories: List[str]) -> Dict[str, Any]:
+    async def _classify_groq(self, text: str, categories: List[str], prompt: str = None, few_shot: list = None) -> Dict[str, Any]:
         """Classify using Groq"""
         
         client = self.clients['groq']
         
         condensed = self._condense_text_for_llm(text, max_chars=1800)
-        prompt = f"""
-        Classify this IT support ticket into one of these categories:
-        Categories: {', '.join(categories)}
-        
-        Ticket: {condensed}
-        
-        Return only the most appropriate category name.
-        """
+        if prompt:
+            groq_prompt = prompt
+        else:
+            groq_prompt = f"""
+            Classify this IT support ticket into one of these categories:
+            Categories: {', '.join(categories)}
+            
+            Ticket: {condensed}
+            
+            Return only the most appropriate category name.
+            """
         
         try:
             response = client.chat.completions.create(
                 model=self.settings.groq_model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": groq_prompt}],
                 max_tokens=48,
                 temperature=0.1
             )
@@ -364,7 +373,7 @@ class ModelService:
                     return {
                         "category": category,
                         "confidence": 0.9,
-                        "reasoning": f"Groq classification: {predicted_category}"
+                        "reasoning": f"Groq classification: {predicted_category} (matched {category})"
                     }
             
             return {
@@ -376,23 +385,26 @@ class ModelService:
         except Exception as e:
             raise Exception(f"Groq classification error: {str(e)}")
     
-    async def _classify_gemini(self, text: str, categories: List[str]) -> Dict[str, Any]:
+    async def _classify_gemini(self, text: str, categories: List[str], prompt: str = None, few_shot: list = None) -> Dict[str, Any]:
         """Classify using Gemini"""
         
         model = self.clients['gemini']
         
         condensed = self._condense_text_for_llm(text, max_chars=1800)
-        prompt = f"""
-        Classify this IT support ticket into one of these categories:
-        Categories: {', '.join(categories)}
-        
-        Ticket: {condensed}
-        
-        Return only the most appropriate category name.
-        """
+        if prompt:
+            gemini_prompt = prompt
+        else:
+            gemini_prompt = f"""
+            Classify this IT support ticket into one of these categories:
+            Categories: {', '.join(categories)}
+            
+            Ticket: {condensed}
+            
+            Return only the most appropriate category name.
+            """
         
         try:
-            response = model.generate_content(prompt)
+            response = model.generate_content(gemini_prompt)
             predicted_category = response.text.strip()
             
             # Find best matching category
@@ -401,7 +413,7 @@ class ModelService:
                     return {
                         "category": category,
                         "confidence": 0.9,
-                        "reasoning": f"Gemini classification: {predicted_category}"
+                        "reasoning": f"Gemini classification: {predicted_category} (matched {category})"
                     }
             
             return {
@@ -413,15 +425,12 @@ class ModelService:
         except Exception as e:
             raise Exception(f"Gemini classification error: {str(e)}")
     
-    async def _classify_huggingface(self, text: str, categories: List[str]) -> Dict[str, Any]:
+    async def _classify_huggingface(self, text: str, categories: List[str], prompt: str = None, few_shot: list = None) -> Dict[str, Any]:
         """Classify using HuggingFace pipeline"""
-        
         classifier = self.classifiers['huggingface']
-        
         # Since most HF classification models are trained on specific datasets,
         # we'll use a keyword-based approach combined with the model's output
         results = classifier(text)
-        
         # Simple keyword matching for IT categories
         text_lower = text.lower()
         category_keywords = {
@@ -433,23 +442,19 @@ class ModelService:
             "Security Incidents": ["security", "virus", "malware", "password", "hack"],
             "System Performance": ["slow", "performance", "memory", "cpu", "disk"]
         }
-        
         best_category = "General Support"
         best_score = 0.0
-        
         for category, keywords in category_keywords.items():
             if category in categories:
                 score = sum(1 for keyword in keywords if keyword in text_lower)
                 if score > best_score:
                     best_score = score
                     best_category = category
-        
         confidence = min(0.9, 0.5 + (best_score * 0.1))
-        
         return {
             "category": best_category,
             "confidence": confidence,
-            "reasoning": "Keyword-based classification with HF model support"
+            "reasoning": f"Keyword-based classification with HF model support: matched {best_category} with {best_score} keywords"
         }
     
     def _fallback_classification(self, text: str, categories: List[str]) -> Dict[str, Any]:
@@ -480,7 +485,6 @@ class ModelService:
                 keywords = category_keywords[category]
                 score = sum(1 for keyword in keywords if keyword in text_lower)
                 category_scores[category] = score
-        
         # Find best category
         if category_scores:
             best_category = max(category_scores.items(), key=lambda x: x[1])
@@ -489,9 +493,8 @@ class ModelService:
                 return {
                     "category": best_category[0],
                     "confidence": confidence,
-                    "reasoning": "Keyword-based fallback classification"
+                    "reasoning": f"Keyword-based fallback classification: matched {best_category[0]} with {best_category[1]} keywords"
                 }
-        
         # Default to first category
         return {
             "category": categories[0] if categories else "General Support",

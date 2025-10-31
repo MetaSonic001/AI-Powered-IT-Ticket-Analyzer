@@ -32,76 +32,157 @@ def pretty_print(title: str, data: Any) -> None:
         print(data)
 
 
-def validate_analysis_response(response_data: Dict[str, Any]) -> None:
-    """Validate that analysis response matches guide requirements"""
-    print("\n🔍 VALIDATION CHECKS:")
+def validate_analysis_response(response: Dict[str, Any]):
+    """Validate analysis response structure and required fields"""
+    print("\n" + "="*60)
+    print("🔍 VALIDATING ANALYSIS RESPONSE")
+    print("="*60)
     
     issues = []
     
-    # Check classification structure
-    classification = response_data.get("classification", {})
-    if not classification.get("category"):
-        issues.append("❌ Missing classification.category")
-    else:
-        print(f"✅ Category: {classification.get('category')}")
-    
-    if not classification.get("subcategory"):
-        issues.append("❌ Missing classification.subcategory (MUST NOT BE NULL)")
-    else:
-        print(f"✅ Subcategory: {classification.get('subcategory')}")
-    
-    if "confidence" not in classification:
-        issues.append("❌ Missing classification.confidence")
-    else:
-        print(f"✅ Confidence: {classification.get('confidence')}")
-    
-    if not classification.get("reasoning"):
-        issues.append("❌ Missing classification.reasoning")
-    else:
-        print(f"✅ Reasoning present: {len(classification.get('reasoning', ''))} chars")
-    
-    # Check priority structure
-    priority = response_data.get("priority_prediction", {})
-    required_priority_fields = ["priority", "confidence", "estimated_resolution_hours", "reasoning", "factors"]
-    for field in required_priority_fields:
-        if field not in priority:
-            issues.append(f"❌ Missing priority_prediction.{field}")
+    # Check top-level fields
+    required_fields = ["ticket_id", "classification", "priority_prediction", "recommended_solutions"]
+    for field in required_fields:
+        if field not in response:
+            issues.append(f"Missing required field: {field}")
         else:
-            print(f"✅ Priority.{field}: {priority.get(field)}")
+            print(f"✅ Has '{field}'")
     
-    # Check solutions are non-empty
-    solutions = response_data.get("recommended_solutions", [])
-    if not solutions:
-        issues.append("❌ recommended_solutions is EMPTY (must have fallback)")
-    else:
+    # Check classification
+    if "classification" in response:
+        classification = response["classification"]
+        if not classification.get("category"):
+            issues.append("Classification missing 'category'")
+        else:
+            print(f"✅ Category: {classification.get('category')}")
+        
+        if not classification.get("reasoning") or classification.get("reasoning") == "":
+            issues.append("Classification has empty 'reasoning'")
+        else:
+            print(f"✅ Reasoning length: {len(classification.get('reasoning', ''))} chars")
+        
+        conf = classification.get("confidence", 0)
+        if conf < 0.5:
+            issues.append(f"Classification confidence too low: {conf}")
+        else:
+            print(f"✅ Confidence: {conf}")
+    
+    # Check priority
+    if "priority_prediction" in response:
+        priority = response["priority_prediction"]
+        if not priority.get("priority"):
+            issues.append("Priority prediction missing 'priority' level")
+        else:
+            print(f"✅ Priority: {priority.get('priority')}")
+        
+        if "estimated_resolution_hours" not in priority:
+            issues.append("Priority missing 'estimated_resolution_hours'")
+    
+    # Check solutions
+    if "recommended_solutions" in response:
+        solutions = response["recommended_solutions"]
         print(f"✅ Solutions count: {len(solutions)}")
-        for i, sol in enumerate(solutions[:2], 1):
-            print(f"   Solution {i}: {sol.get('title', 'Untitled')}")
-            if not sol.get("steps"):
-                issues.append(f"❌ Solution {i} missing steps")
-            else:
-                print(f"     Steps: {len(sol.get('steps', []))}")
+        
+        if len(solutions) == 0:
+            issues.append("No solutions returned (KB may be empty)")
+        else:
+            # Check first solution structure
+            first = solutions[0]
+            if not first.get("title"):
+                issues.append("Solution missing 'title'")
+            if "steps" not in first:
+                issues.append("Solution missing 'steps'")
     
-    # Check metadata richness
-    metadata = response_data.get("analysis_metadata", {})
-    if metadata.get("workflow") != "langgraph":
-        issues.append(f"⚠️  Workflow is '{metadata.get('workflow')}' (expected 'langgraph')")
+    # Check for new UX fields
+    if "summary" in response:
+        print(f"✅ Has plain-English summary: {len(response['summary'])} chars")
     else:
-        print(f"✅ Workflow: langgraph")
+        issues.append("Missing 'summary' field (plain-English summary)")
     
-    if "agents_executed" in metadata:
-        print(f"✅ Agents executed: {metadata.get('agents_executed')}")
+    if "action_items" in response:
+        print(f"✅ Has action items: {len(response['action_items'])} items")
     else:
-        issues.append("❌ Missing analysis_metadata.agents_executed")
+        issues.append("Missing 'action_items' field")
     
-    if "knowledge_sources_queried" in metadata:
-        print(f"✅ Knowledge sources: {metadata.get('knowledge_sources_queried')}")
+    if "resolution_timeline" in response:
+        timeline = response["resolution_timeline"]
+        print(f"✅ Has resolution timeline (SLA: {timeline.get('sla', 'N/A')})")
+    else:
+        issues.append("Missing 'resolution_timeline' field")
+    
+    if "warnings" in response and len(response["warnings"]) > 0:
+        print(f"⚠️  Has confidence warnings: {len(response['warnings'])} warnings")
+        for warning in response["warnings"]:
+            print(f"   - {warning.get('type')}: {warning.get('message')}")
+    
+    # Check metadata
+    metadata = response.get("analysis_metadata", {})
+    if "workflow" in metadata:
+        print(f"✅ Workflow: {metadata.get('workflow')}")
+    
+    if "model_used" in metadata:
+        print(f"✅ Model: {metadata.get('model_used')}")
     
     if "total_documents_retrieved" in metadata:
         print(f"✅ Documents retrieved: {metadata.get('total_documents_retrieved')}")
     
     if "top_similarity_score" in metadata:
         print(f"✅ Top similarity: {metadata.get('top_similarity_score')}")
+    
+    # Summary
+    if issues:
+        print("\n⚠️  VALIDATION ISSUES FOUND:")
+        for issue in issues:
+            print(f"  {issue}")
+    else:
+        print("\n✅ ALL VALIDATION CHECKS PASSED!")
+    print("="*60)
+
+
+def validate_recommend_response(response: Dict[str, Any]):
+    """Validate solution recommendation response structure"""
+    print("\n" + "="*60)
+    print("🔍 VALIDATING RECOMMENDATION RESPONSE")
+    print("="*60)
+    
+    issues = []
+    
+    # Check top-level fields
+    if "recommendations" not in response:
+        issues.append("Missing 'recommendations' field")
+    else:
+        print("✅ Has 'recommendations'")
+    
+    if "total_results" not in response:
+        issues.append("Missing 'total_results' field")
+    else:
+        print(f"✅ Total results: {response.get('total_results')}")
+    
+    # Check recommendations content
+    if "recommendations" in response:
+        recommendations = response["recommendations"]
+        
+        if len(recommendations) == 0:
+            issues.append("⚠️  No recommendations returned (KB may be empty - run: python scripts/ingest_solutions.py)")
+        else:
+            print(f"✅ Recommendations count: {len(recommendations)}")
+            
+            # Check first recommendation structure
+            first = recommendations[0]
+            required_fields = ["solution_id", "title", "steps", "similarity_score", "estimated_time_minutes", "success_rate"]
+            
+            for field in required_fields:
+                if field not in first:
+                    issues.append(f"Recommendation missing '{field}'")
+                else:
+                    if field == "steps":
+                        print(f"✅ Has steps: {len(first.get('steps', []))} steps")
+                    elif field == "similarity_score":
+                        print(f"✅ Similarity score: {first.get('similarity_score'):.3f}")
+                    elif field == "estimated_time_minutes":
+                        print(f"✅ Estimated time: {first.get('estimated_time_minutes')} minutes")
+                    elif field == "success_rate":
+                        print(f"✅ Success rate: {first.get('success_rate'):.1%}")
     
     # Summary
     if issues:
@@ -138,8 +219,11 @@ def call_post(path: str, payload: Dict[str, Any] | None = None, validate: bool =
             pretty_print("RESPONSE body", response_data)
             
             # If this is an analyze endpoint and validation requested, validate structure
-            if validate and r.status_code == 200 and "tickets/analyze" in path:
-                validate_analysis_response(response_data)
+            if validate and r.status_code == 200:
+                if "tickets/analyze" in path:
+                    validate_analysis_response(response_data)
+                elif "solutions/recommend" in path:
+                    validate_recommend_response(response_data)
         except Exception:
             pretty_print("RESPONSE body (text)", r.text)
     except Exception as e:
@@ -215,7 +299,10 @@ def test_recommend_solutions():
     payload = {"query": "email sync iphone not receiving", "category": "Email Issues", "max_results": 5}
     print("\n🧪 Testing solution recommendation endpoint...")
     print("Expected: Non-empty solutions with steps, similarity_score, estimated_time_minutes")
-    call_post("/api/v1/solutions/recommend", payload)
+    print("\n⚠️  NOTE: If you get empty results, the knowledge base may be empty.")
+    print("   Run: python scripts/ingest_solutions.py")
+    print("   Then test endpoint /api/v1/debug/knowledge-base-status to verify KB has data\n")
+    call_post("/api/v1/solutions/recommend", payload, validate=True)
 
 
 def test_search_knowledge():

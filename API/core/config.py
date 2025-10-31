@@ -24,7 +24,13 @@ class Settings(BaseSettings):
     workers: int = Field(default=1)
     
     # Model Configuration
-    use_ollama: bool = Field(default=True)
+    # LLM Provider flags (enable/disable each provider)
+    use_groq: bool = Field(default=True)
+    use_gemini: bool = Field(default=False)
+    use_ollama: bool = Field(default=False)
+    use_huggingface: bool = Field(default=True)
+    
+    # Provider-specific settings
     ollama_host: str = Field(default="http://localhost:11434")
     ollama_models: Dict[str, str] = {
         "embedding": "nomic-embed-text:latest",
@@ -197,21 +203,44 @@ class Settings(BaseSettings):
     
     @property
     def has_external_llm(self) -> bool:
-        """Check if external LLM APIs are configured"""
-        return bool(self.groq_api_key or self.gemini_api_key)
+        """Check if external LLM APIs are configured and enabled"""
+        groq_enabled = self.use_groq and bool(self.groq_api_key)
+        gemini_enabled = self.use_gemini and bool(self.gemini_api_key)
+        return groq_enabled or gemini_enabled
     
     @property
     def primary_llm_provider(self) -> str:
-        """Get primary LLM provider"""
-        # Prefer external providers if keys are present to avoid local Ollama usage
-        if self.groq_api_key:
+        """Get primary LLM provider based on enabled flags and API keys"""
+        # Check Groq first (fast and cost-effective)
+        if self.use_groq and self.groq_api_key:
             return "groq"
-        elif self.gemini_api_key:
+        # Then Gemini
+        elif self.use_gemini and self.gemini_api_key:
             return "gemini"
+        # Then Ollama (local)
         elif self.use_ollama:
             return "ollama"
-        else:
+        # Fallback to HuggingFace
+        elif self.use_huggingface:
             return "huggingface"
+        else:
+            return "none"
+    
+    @property
+    def enabled_llm_providers(self) -> List[str]:
+        """Get list of enabled LLM providers in priority order"""
+        providers = []
+        
+        if self.use_groq and self.groq_api_key:
+            providers.append("groq")
+        if self.use_gemini and self.gemini_api_key:
+            providers.append("gemini")
+        if self.use_ollama:
+            providers.append("ollama")
+        if self.use_huggingface:
+            providers.append("huggingface")
+        
+        return providers
     
     @property
     def knowledge_base_config(self) -> Dict[str, Any]:

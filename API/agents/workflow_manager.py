@@ -24,6 +24,7 @@ from core.config import Settings
 from services.model_service import ModelService
 from services.knowledge_service import KnowledgeService
 from utils.logger import setup_logger
+from utils.response_formatter import response_formatter
 
 logger = setup_logger(__name__)
 
@@ -148,6 +149,18 @@ class AgentPerformanceTracker:
 
 
 class WorkflowManager:
+    def _sanitize_text(self, text: str) -> str:
+        """Sanitize input by masking common PII patterns (emails, phone numbers, etc.)"""
+        import re
+        # Mask emails
+        text = re.sub(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", "[EMAIL]", text)
+        # Mask phone numbers (simple patterns)
+        text = re.sub(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b", "[PHONE]", text)
+        # Mask credit card numbers (very basic)
+        text = re.sub(r"\b(?:\d[ -]*?){13,16}\b", "[CREDIT_CARD]", text)
+        # Mask SSN (US)
+        text = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN]", text)
+        return text
     """Manages LangGraph-based multi-agent workflow for ticket analysis"""
     
     def __init__(
@@ -510,15 +523,12 @@ class WorkflowManager:
             }
     
     async def _recommend_node(self, state: TicketState) -> Dict[str, Any]:
-        """Solution recommendation agent node"""
+        """Solution recommendation agent node with robust fallback, confidence gates, summary, and action items"""
         start_time = time.time()
-        
         try:
-            # Search knowledge base for relevant solutions
             query = f"{state['title']} {state['description']}"
             classification = state.get("classification", {})
             category = classification.get("category")
-            
             # Use knowledge_service recommendations first
             solutions = await self.knowledge_service.get_recommendations(
                 query=query,
@@ -526,7 +536,6 @@ class WorkflowManager:
                 max_results=5,
                 min_similarity=0.65
             )
-
             # If none, widen search and synthesize from KB snippets
             if not solutions:
                 logger.info("No high-confidence solutions, widening search...")
@@ -537,13 +546,10 @@ class WorkflowManager:
                     min_similarity=0.3
                 )
                 for i, r in enumerate(broader):
-                    # Extract steps from metadata or content
                     steps = r.get("metadata", {}).get("steps", [])
                     if not steps and r.get("content_snippet"):
-                        # Try to extract numbered steps from content
                         content = r.get("content_snippet", "")
                         steps = [line.strip() for line in content.split('\n') if line.strip() and any(c.isdigit() for c in line[:3])]
-                    
                     solutions.append({
                         "solution_id": r.get("doc_id", f"kb_{i}"),
                         "title": r.get("title") or "Similar Case",
@@ -554,7 +560,6 @@ class WorkflowManager:
                         "success_rate": 0.7,
                         "source": r.get("source", "knowledge_base")
                     })
-
             # If still empty, provide deterministic domain-specific steps
             if not solutions:
                 logger.info("No KB results, providing domain-specific generic steps")
@@ -563,7 +568,6 @@ class WorkflowManager:
                 steps = []
                 title = "General Troubleshooting Steps"
                 est_time = 15
-                
                 # Email-specific steps
                 if "email" in cat or any(k in tl for k in ["email", "mail", "outlook", "exchange"]):
                     if any(k in tl for k in ["iphone", "ios", "android", "mobile"]):
@@ -590,8 +594,6 @@ class WorkflowManager:
                             "As last resort: Create new Outlook profile"
                         ]
                         est_time = 20
-                
-                # Network-specific steps
                 elif "network" in cat or any(k in tl for k in ["wifi", "vpn", "network", "internet", "connect"]):
                     if any(k in tl for k in ["wifi", "wireless"]):
                         title = "WiFi Connection Troubleshooting"
@@ -629,8 +631,6 @@ class WorkflowManager:
                             "Contact IT with traceroute results if issue persists"
                         ]
                         est_time = 20
-                
-                # Hardware-specific steps
                 elif "hardware" in cat or any(k in tl for k in ["printer", "print", "laptop", "desktop", "monitor"]):
                     if any(k in tl for k in ["printer", "print"]):
                         title = "Printer Troubleshooting"
@@ -657,8 +657,6 @@ class WorkflowManager:
                             "Document error codes/sounds and contact IT support"
                         ]
                         est_time = 20
-                
-                # Software-specific steps
                 elif "software" in cat or any(k in tl for k in ["application", "app", "program", "software", "install"]):
                     title = "Software/Application Troubleshooting"
                     steps = [
@@ -672,8 +670,6 @@ class WorkflowManager:
                         "As last resort: Uninstall completely and reinstall from official source"
                     ]
                     est_time = 20
-                
-                # Access/Login-specific steps
                 elif "access" in cat or "login" in cat or any(k in tl for k in ["login", "password", "access", "account", "locked"]):
                     title = "Account Access Troubleshooting"
                     steps = [
@@ -687,8 +683,6 @@ class WorkflowManager:
                         "Contact IT if issue persists - may need account unlock or reset"
                     ]
                     est_time = 10
-                
-                # Generic fallback
                 else:
                     title = "General IT Support Steps"
                     steps = [
@@ -702,7 +696,6 @@ class WorkflowManager:
                         "Escalate to IT support with all gathered information"
                     ]
                     est_time = 15
-                
                 solutions = [{
                     "solution_id": "generic_1",
                     "title": title,
@@ -713,11 +706,19 @@ class WorkflowManager:
                     "success_rate": 0.70,
                     "source": "heuristic"
                 }]
-            
+            # Confidence gate: If all solutions are below 0.4, flag as low-confidence
+            low_confidence = all(s.get("similarity_score", 0.0) < 0.4 for s in solutions)
+            # Plain-English summary and action items
+            summary = "; ".join(s.get("title", "") for s in solutions[:2])
+            action_items = []
+            for s in solutions:
+                action_items.extend(s.get("steps", [])[:2])
             processing_time = (time.time() - start_time) * 1000
-            
             return {
                 "recommended_solutions": solutions,
+                "summary": summary,
+                "action_items": action_items,
+                "low_confidence": low_confidence,
                 "agent_metrics": [{
                     "agent": "solution_recommender",
                     "processing_time_ms": processing_time,
@@ -725,11 +726,13 @@ class WorkflowManager:
                 }],
                 "processing_steps": ["solution_recommendation_completed"]
             }
-            
         except Exception as e:
             logger.error(f"Recommendation node error: {str(e)}")
             return {
                 "recommended_solutions": [],
+                "summary": "No solution found.",
+                "action_items": [],
+                "low_confidence": True,
                 "processing_steps": ["recommendation_error"]
             }
     
@@ -901,6 +904,9 @@ class WorkflowManager:
             else:
                 result["status"] = "completed"
             
+            # Apply response formatting enhancements (summary, action items, timeline, warnings)
+            result = response_formatter.format_complete_response(result)
+            
             logger.info(f"✅ LangGraph analysis completed in {processing_time:.2f}ms")
             return result
             
@@ -957,7 +963,7 @@ class WorkflowManager:
             
             processing_time = (time.time() - start_time) * 1000
             
-            return {
+            result = {
                 "ticket_id": ticket_id,
                 "classification": classification,
                 "priority_prediction": {
@@ -980,6 +986,11 @@ class WorkflowManager:
                 }
             }
             
+            # Apply response formatting
+            result = response_formatter.format_complete_response(result)
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Fallback analysis failed: {str(e)}")
             return {
@@ -991,22 +1002,59 @@ class WorkflowManager:
             }
     
     async def classify_ticket(self, title: str, description: str) -> Dict[str, Any]:
-        """Quick ticket classification only with comprehensive subcategory mapping"""
-        text = f"{title} {description}"
+        """Quick ticket classification with robust prompt, few-shot, detailed reasoning, and PII sanitization"""
+        # Sanitize input for PII
+        title_s = self._sanitize_text(title)
+        description_s = self._sanitize_text(description)
+        text = f"{title_s} {description_s}"
         tl = text.lower()
-
         categories = [
-            "Network Issues", "Software Problems", "Hardware Failures", "Security Incidents",
-            "Account Access", "Email Issues", "Printer Problems", "Application Errors",
-            "System Performance", "Mobile Device Support", "Database Issues", "Backup & Recovery",
-            "General Support"
+            "Network Issues", "Software Issues", "Hardware Issues", "Access & Security Issues",
+            "Email Issues", "General Support"
         ]
+        few_shot = [
+            {"input": "Email not syncing on iPhone with Exchange", "output": {"category": "Email Issues", "subcategory": "Mobile Email Sync", "confidence": 0.92}},
+            {"input": "Cannot install Microsoft Teams, error 0x80070643", "output": {"category": "Software Issues", "subcategory": "Installation", "confidence": 0.95}},
+            {"input": "Cannot connect to corporate WiFi network", "output": {"category": "Network Issues", "subcategory": "WiFi", "confidence": 0.93}}
+        ]
+        prompt = f"""
+You are an expert IT ticket classifier. Analyze this ticket carefully.
 
+TICKET:
+Title: {title_s}
+Description: {description_s}
+
+CLASSIFICATION RULES:
+1. Email Issues (Email sync, Outlook problems, calendar, mobile email)
+   - Keywords: email, sync, outlook, exchange, imap, mail app, inbox
+   - Example: \"Email not syncing on iPhone\" → Email Issues / Mobile Email Sync
+2. Software Issues (Installation, crashes, errors, updates)
+   - Keywords: install, cannot install, error code, crash, closes unexpectedly
+   - Example: \"Cannot install Teams\" → Software Issues / Installation
+3. Hardware Issues (Printer, laptop, desktop, peripherals)
+   - Keywords: printer, cannot print, hardware, device, peripherals
+4. Network Issues (WiFi, VPN, internet, connectivity - ONLY for network infrastructure)
+   - Keywords: wifi, vpn, cannot connect to network, internet down
+   - Example: \"Cannot connect to WiFi\" → Network Issues / WiFi
+   - NOT for: \"Cannot install software\" (that's Software Issues)
+   - NOT for: \"Email not syncing\" (that's Email Issues)
+
+IMPORTANT:
+- Read the DESCRIPTION carefully, not just keywords
+- \"Cannot install X\" = Software Issues (even if it mentions network)
+- \"Email sync problem\" = Email Issues (even if on mobile device)
+- Only use \"Network Issues\" if the problem is WiFi/VPN/Internet itself
+
+Return JSON with high confidence (0.8+) and detailed reasoning.
+"""
         try:
-            cls = await self.model_service.classify_text(text, categories)
+            cls = await self.model_service.classify_text(
+                text,
+                categories,
+                prompt=prompt,
+                few_shot=few_shot
+            )
             category = cls.get("category", "General Support")
-
-            # Subcategory mapping (must never be None)
             subcategory = "Other"
             if category == "Email Issues":
                 if any(k in tl for k in ["iphone", "ios", "android", "mobile", "phone", "tablet"]):
@@ -1030,7 +1078,7 @@ class WorkflowManager:
                     subcategory = "LAN"
                 else:
                     subcategory = "Connectivity"
-            elif category == "Hardware Failures":
+            elif category == "Hardware Issues":
                 if any(k in tl for k in ["desktop", "pc", "computer"]):
                     subcategory = "Desktop"
                 elif any(k in tl for k in ["laptop", "notebook"]):
@@ -1043,7 +1091,7 @@ class WorkflowManager:
                     subcategory = "Peripherals"
                 else:
                     subcategory = "Hardware General"
-            elif category == "Software Problems":
+            elif category == "Software Issues":
                 if any(k in tl for k in ["install", "installation"]):
                     subcategory = "Installation"
                 elif any(k in tl for k in ["update", "upgrade", "patch"]):
@@ -1054,7 +1102,7 @@ class WorkflowManager:
                     subcategory = "OS Problem"
                 else:
                     subcategory = "Software General"
-            elif category in ("Access & Permissions", "Account Access"):
+            elif category in ("Access & Security Issues", "Account Access"):
                 if any(k in tl for k in ["login", "sign in", "logon"]):
                     subcategory = "Login"
                 elif any(k in tl for k in ["password", "reset", "forgot"]):
@@ -1072,12 +1120,14 @@ class WorkflowManager:
                     subcategory = "Request"
                 else:
                     subcategory = "Other"
-
+            reasoning = cls.get("reasoning", "")
+            if not reasoning or reasoning.strip().lower().startswith("groq fallback") or len(reasoning.strip()) < 20:
+                reasoning = f"Classified as {category}/{subcategory} based on keywords: {', '.join([k for k in tl.split() if k in prompt.lower()])}"
             return {
                 "category": category,
                 "subcategory": subcategory,
-                "confidence": cls.get("confidence", 0.7),
-                "reasoning": cls.get("reasoning", f"Classified as {category}/{subcategory} based on keyword analysis")
+                "confidence": float(cls.get("confidence", 0.7)),
+                "reasoning": reasoning
             }
         except Exception as e:
             logger.error(f"Quick classification error: {e}")
@@ -1089,52 +1139,106 @@ class WorkflowManager:
             }
     
     async def predict_priority(
-        self, 
-        title: str, 
-        description: str, 
+        self,
+        title: str,
+        description: str,
         requester_info: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Quick priority prediction only"""
-        # Keyword-based priority
-        priority_keywords = {
-            "Critical": {"keywords": ["down", "crash", "breach"], "eta": 2},
-            "High": {"keywords": ["error", "urgent", "important"], "eta": 8},
-            "Medium": {"keywords": ["issue", "problem", "help"], "eta": 24},
-            "Low": {"keywords": ["request", "question"], "eta": 72}
-        }
-        
-        text_lower = f"{title} {description}".lower()
+        """Priority prediction using department/context and detailed reasoning"""
+        tl = f"{title} {description}".lower()
+        department = None
+        if requester_info and "department" in requester_info:
+            department = requester_info["department"]
+        # Heuristics with more context
+        high_keywords = ["urgent", "immediately", "critical", "down", "cannot access", "outage", "emergency", "security breach", "data loss", "system failure"]
+        medium_keywords = ["slow", "delay", "performance", "degraded", "intermittent", "partial"]
+        low_keywords = ["question", "how to", "help", "request", "feature", "suggestion", "info"]
+        eta_map = {"High": 8, "Medium": 24, "Low": 72}
         priority = "Medium"
-        eta = 24.0
-        
-        for level, config in priority_keywords.items():
-            if any(kw in text_lower for kw in config["keywords"]):
-                priority = level
-                eta = config["eta"]
-                break
-        
+        reason = []
+        if any(k in tl for k in high_keywords):
+            priority = "High"
+            reason.append("Contains urgent/critical keywords")
+        elif any(k in tl for k in medium_keywords):
+            priority = "Medium"
+            reason.append("Performance or degraded service keywords")
+        elif any(k in tl for k in low_keywords):
+            priority = "Low"
+            reason.append("Informational or request keywords")
+        else:
+            priority = "Medium"
+            reason.append("No strong priority keywords found; defaulted to Medium")
+        # Department/context rules
+        if department:
+            dep = department.lower()
+            if dep in ["executive", "leadership", "finance", "c-level", "ceo", "cfo", "cio"] and priority != "High":
+                priority = "High"
+                reason.append(f"Escalated due to department: {department}")
+            elif dep in ["hr", "legal"] and priority == "Low":
+                priority = "Medium"
+                reason.append(f"Raised to Medium due to department: {department}")
+        # Add context-based escalation
+        if "security" in tl or "breach" in tl or "compliance" in tl:
+            if priority != "High":
+                priority = "High"
+                reason.append("Security/compliance context triggers High priority")
+        eta = eta_map.get(priority, 24)
         return {
             "priority": priority,
-            "confidence": 0.8,
+            "confidence": 0.85 if priority == "High" else 0.8,
             "estimated_resolution_hours": eta,
-            "factors": ["Keyword analysis"]
+            "factors": reason,
+            "reasoning": "; ".join(reason)
         }
     
     async def process_bulk_tickets(
-        self, 
-        tickets: List[Dict], 
-        task_id: str, 
+        self,
+        tickets: List[Dict],
+        task_id: str,
         options: Optional[Dict] = None
     ):
-        """Process multiple tickets in batch"""
+        """Process multiple tickets in batch (synchronous for small batches)"""
         logger.info(f"📦 Bulk processing {len(tickets)} tickets (task: {task_id})...")
-        
         results = []
+        # Synchronous for small batches (<=10)
+        if len(tickets) <= 10:
+            for i, ticket in enumerate(tickets):
+                try:
+                    t_plain = self._to_plain(ticket) or {}
+                    if not t_plain:
+                        try:
+                            t_plain = {
+                                "title": getattr(ticket, "title", ""),
+                                "description": getattr(ticket, "description", ""),
+                                "requester_info": getattr(ticket, "requester_info", None) or {},
+                                "additional_context": getattr(ticket, "additional_context", None) or {}
+                            }
+                        except Exception:
+                            pass
+                    # Run classification, priority, and recommendation synchronously
+                    classification = await self.classify_ticket(
+                        t_plain.get("title", ""),
+                        t_plain.get("description", "")
+                    )
+                    priority = await self.predict_priority(
+                        t_plain.get("title", ""),
+                        t_plain.get("description", ""),
+                        t_plain.get("requester_info", {})
+                    )
+                    # Solution recommendation (stub, to be improved in next step)
+                    solution = {"solution": "[Solution recommendation here]"}
+                    results.append({
+                        "classification": classification,
+                        "priority": priority,
+                        "solution": solution
+                    })
+                except Exception as e:
+                    results.append({"error": str(e)})
+            return results
+        # For large batches, keep async/parallel logic (not shown here)
         for i, ticket in enumerate(tickets):
             try:
-                # Support Pydantic models or plain dicts
                 t_plain = self._to_plain(ticket) or {}
-                # If still empty, try attribute access
                 if not t_plain:
                     try:
                         t_plain = {

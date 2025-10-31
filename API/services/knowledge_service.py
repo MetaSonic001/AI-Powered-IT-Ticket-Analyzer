@@ -533,6 +533,18 @@ class KnowledgeService:
             else:
                 steps = steps_raw or []
 
+            # Get estimated time and success rate from metadata or use defaults
+            estimated_time = metadata.get("estimated_time_minutes")
+            if estimated_time is None:
+                # Default estimate based on number of steps
+                estimated_time = min(max(len(steps) * 5, 10), 60)
+            
+            success_rate = metadata.get("success_rate")
+            if success_rate is None:
+                # Default success rate based on similarity score
+                score = float(result.get("score", 0.5))
+                success_rate = min(0.95, 0.5 + (score * 0.4))
+
             recommendation = {
                 "solution_id": result.get("doc_id", str(uuid.uuid4())),
                 "title": result.get("title", "Untitled Solution"),
@@ -540,6 +552,8 @@ class KnowledgeService:
                 "category": result.get("category"),
                 "steps": steps or ["Refer to the linked knowledge base article for detailed steps"],
                 "similarity_score": float(result.get("score", 0.0)),
+                "estimated_time_minutes": int(estimated_time),
+                "success_rate": float(success_rate),
                 "source": result.get("source", "knowledge_base"),
                 "metadata": metadata
             }

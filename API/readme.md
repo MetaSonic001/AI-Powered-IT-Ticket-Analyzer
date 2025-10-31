@@ -574,12 +574,27 @@ SQLITE_DB_PATH=./data/app.db
 #WEAVIATE_HOST=http://localhost:8080
 ```
 
-### Ollama Models
+### Ollama Setup & Models
 
-The system uses these Ollama models (automatically pulled):
+**Quick Start:**
 
-- `nomic-embed-text:latest` - For embeddings
-- `gemma2:2b` - For text generation and classification
+1. **Install Ollama** from [ollama.ai](https://ollama.ai)
+2. **Start Ollama server**: Run `ollama serve` in a terminal (keeps running in background)
+3. **Models auto-pull**: When API requests them, Ollama automatically downloads:
+   - `nomic-embed-text:latest` - For embeddings (~274MB)
+   - `gemma2:2b` - For text generation and classification (~1.6GB)
+4. **Optional pre-pull**: `ollama pull nomic-embed-text:latest && ollama pull gemma2:2b`
+
+**How it works:**
+- **One terminal**: Just run `ollama serve` once - models load on-demand
+- **Automatic fallback**: If Ollama is off (`USE_OLLAMA=false`), system uses Groq → HuggingFace
+- **No separate model terminal needed**: Ollama manages models automatically
+
+**Configuration:**
+```env
+USE_OLLAMA=true                          # Enable Ollama provider
+OLLAMA_HOST=http://localhost:11434       # Default Ollama endpoint
+```
 
 ## 📋 API Endpoints
 
@@ -853,6 +868,38 @@ The system tracks classification accuracy dynamically:
 - Accuracy improves as more tickets are processed and validated
 
 ## 🔍 Advanced Features
+
+### Enhanced UX & Response Formatting
+
+**New in this release:**
+
+- **Plain-English Summaries**: Every analysis includes a non-technical summary explaining the issue, priority, and next steps in user-friendly language
+- **Action Items**: Clear, prioritized list of what to do next (e.g., "Contact IT Help Desk", "Try recommended solution", "Escalate if issue persists")
+- **Resolution Timelines**: Estimated start time, completion time, and SLA based on priority level
+- **Confidence Warnings**: Automatic flagging when classification, priority, or solution confidence is below threshold, with suggestions for manual review
+- **Response Formatter**: Centralized `utils/response_formatter.py` module for consistent, user-friendly response formatting
+
+Example enhanced response:
+```json
+{
+  "classification": {"category": "Email Issues", "confidence": 0.89},
+  "priority_prediction": {"priority": "High", "estimated_resolution_hours": 8},
+  "recommended_solutions": [...],
+  "summary": "We identified this as an **Email Issues** issue. This should be addressed soon as it's blocking your work...",
+  "action_items": [
+    {"priority": 1, "action": "📞 Contact IT Support soon", "urgency": "Address within 4 hours"},
+    {"priority": 2, "action": "Try recommended solution: Fix iPhone Exchange Email Sync", "estimated_time": "15 minutes"}
+  ],
+  "resolution_timeline": {
+    "estimated_start": "Within 4 hours",
+    "estimated_completion": "15 minutes to 30 minutes",
+    "sla": "8 hours maximum"
+  },
+  "warnings": [
+    {"type": "low_solution_relevance", "message": "Recommended solutions have low similarity - may not be relevant"}
+  ]
+}
+```
 
 ### RAG (Retrieval-Augmented Generation)
 
