@@ -7,11 +7,13 @@ import {
   useColorScheme,
   TextInput,
   Animated,
-  Dimensions
+  Dimensions,
+  ActivityIndicator
 } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTickets } from '../../contexts/TicketContext';
+import { KnowledgeSearchResult } from '../../types/api';
 import { 
   Search, 
   Camera, 
@@ -41,10 +43,13 @@ const { width } = Dimensions.get('window');
 export default function SearchScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { state } = useTickets();
+  const { state, searchKnowledge } = useTickets();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<any>(null);
 
   // Animation references
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -96,6 +101,38 @@ export default function SearchScreen() {
       ),
     ]).start();
   }, []);
+
+  // Handle search with debouncing
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.trim().length > 2) {
+      setIsSearching(true);
+      searchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const category = activeCategory !== 'All' ? activeCategory : undefined;
+          const response = await searchKnowledge(searchQuery, category);
+          setSearchResults(response.results || []);
+        } catch (error) {
+          console.error('Search failed:', error);
+          setSearchResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      }, 500);
+    } else {
+      setSearchResults([]);
+      setIsSearching(false);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, activeCategory]);
 
   const textColor = isDark ? '#F9FAFB' : '#1F2937';
   const cardBg = isDark ? 'rgba(55, 65, 81, 0.9)' : '#FFFFFF';
@@ -340,7 +377,10 @@ export default function SearchScreen() {
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
             />
-            {searchQuery.length > 0 && (
+            {isSearching && (
+              <ActivityIndicator size="small" color="#3B82F6" />
+            )}
+            {searchQuery.length > 0 && !isSearching && (
               <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
                 <X size={18} color={subTextColor} />
               </TouchableOpacity>
@@ -375,7 +415,7 @@ export default function SearchScreen() {
                 }}>
                 <TouchableOpacity style={[styles.methodCard, { backgroundColor: cardBg }]} activeOpacity={0.8}>
                   <LinearGradient
-                    colors={method.gradient}
+                    colors={method.gradient as [string, string]}
                     style={styles.methodIconContainer}>
                     <method.icon size={20} color="#FFFFFF" />
                   </LinearGradient>
@@ -475,15 +515,33 @@ export default function SearchScreen() {
           </ScrollView>
         </Animated.View>
 
-        {/* Popular Solutions */}
+        {/* Search Results or Popular Solutions */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <ThumbsUp size={20} color="#10B981" />
-            <Text style={[styles.sectionTitle, { color: textColor }]}>Popular Solutions</Text>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              {searchResults.length > 0 ? 'Search Results' : 'Popular Solutions'}
+            </Text>
+            {searchResults.length > 0 && (
+              <View style={styles.resultsBadge}>
+                <Text style={styles.resultsCount}>{searchResults.length}</Text>
+              </View>
+            )}
           </View>
           
           <View style={styles.solutionsList}>
-            {popularSolutions.map((solution, index) => (
+            {(searchResults.length > 0 ? searchResults.map((result, index) => ({
+              id: result.solution_id,
+              title: result.title,
+              description: result.description || 'AI-powered solution',
+              category: result.category,
+              views: `${Math.round(result.similarity_score * 100)}%`,
+              rating: 4.5 + (result.similarity_score * 0.5),
+              icon: Lightbulb,
+              difficulty: result.similarity_score > 0.8 ? 'Beginner' : 'Intermediate',
+              estimatedTime: '5 min',
+              gradient: ['#3B82F6', '#1E40AF'] as [string, string]
+            })) : popularSolutions).map((solution, index) => (
               <Animated.View
                 key={solution.id}
                 style={{
@@ -499,7 +557,7 @@ export default function SearchScreen() {
                 }}>
                 <TouchableOpacity style={[styles.solutionCard, { backgroundColor: cardBg }]} activeOpacity={0.8}>
                   <LinearGradient
-                    colors={[...solution.gradient, solution.gradient[1] + '20']}
+                    colors={[solution.gradient[0], solution.gradient[1], solution.gradient[1] + '20']}
                     style={styles.solutionIconContainer}>
                     <solution.icon size={22} color="#FFFFFF" />
                   </LinearGradient>
@@ -527,9 +585,9 @@ export default function SearchScreen() {
                           {solution.rating}
                         </Text>
                         <View style={styles.metaDivider} />
-                        <Eye size={12} color={subTextColor} />
+                        <Shield size={12} color={subTextColor} />
                         <Text style={[styles.solutionViews, { color: subTextColor }]}>
-                          {solution.views}
+                          {searchResults.length > 0 ? `Match: ${solution.views}` : solution.views}
                         </Text>
                       </View>
                       
@@ -1021,5 +1079,16 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 32,
+  },
+  resultsBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  resultsCount: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10B981',
   },
 });

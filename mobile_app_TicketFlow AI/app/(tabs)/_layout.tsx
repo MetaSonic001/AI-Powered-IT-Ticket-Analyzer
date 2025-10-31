@@ -146,29 +146,17 @@ export default function TabLayout() {
       />
       
       <Tabs.Screen
-        name="alerts"
+        name="analytics"
         options={{
-          title: 'Alerts',
+          title: 'Analytics',
           tabBarIcon: ({ size, color, focused }) => (
             <TabBarIcon 
-              IconComponent={Bell} 
+              IconComponent={BarChart3} 
               focused={focused} 
               size={size} 
               color={color} 
             />
           ),
-          tabBarBadge: 3, // Example notification badge
-          tabBarBadgeStyle: {
-            backgroundColor: '#EF4444',
-            color: '#FFFFFF',
-            fontSize: 10,
-            fontWeight: '700',
-            minWidth: 18,
-            height: 18,
-            borderRadius: 9,
-            borderWidth: 2,
-            borderColor: isDark ? '#1F2937' : '#FFFFFF',
-          },
         }}
       />
       
