@@ -4,7 +4,7 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import "./globals.css"
-import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes"
+import { ThemeProvider as NextThemesProvider } from "next-themes"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,13 +31,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body className="font-sans antialiased">
-        <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+        <NextThemesProvider attribute="class" defaultTheme="light" enableSystem>
+          <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+        </NextThemesProvider>
         <Analytics />
       </body>
-      </NextThemesProvider>
     </html>
   )
 }
