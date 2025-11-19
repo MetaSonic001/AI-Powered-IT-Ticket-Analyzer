@@ -544,7 +544,60 @@ async def get_ticket_history(
         logger.error(f"Ticket history retrieval failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get ticket history: {str(e)}")
 
+
+# Bulk CSV template for upload
+@app.get("/api/v1/tickets/bulk-template")
+async def bulk_template():
+    """Serve a CSV template with a few sample rows for bulk ticket upload."""
+    try:
+        headers = [
+            "title",
+            "description",
+            "requester_name",
+            "requester_email",
+            "requester_department",
+            "additional_context_json",
+        ]
+        samples = [
+            [
+                "Cannot connect to corporate WiFi",
+                "User reports WiFi authentication failure on office network.",
+                "Jane Doe",
+                "jane@example.com",
+                "Engineering",
+                "{\"location\": \"HQ-3F\", \"device\": \"Windows Laptop\"}",
+            ],
+            [
+                "Outlook crashes when opening attachments",
+                "Outlook app closes unexpectedly whenever user opens PDF attachments.",
+                "John Smith",
+                "john@example.com",
+                "Finance",
+                "{\"affected_app\": \"Outlook 365\"}",
+            ],
+        ]
+        # Build CSV string
+        import io
+        import csv
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(headers)
+        for row in samples:
+            writer.writerow(row)
+        content = buf.getvalue()
+        return JSONResponse(
+            status_code=200,
+            content={
+                "filename": "ticketflow_bulk_template.csv",
+                "content": content,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Template generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Template generation failed: {str(e)}")
+
 # Get single ticket
+
 @app.get("/api/v1/tickets/{ticket_id}")
 async def get_ticket_details(
     ticket_id: str,
@@ -637,6 +690,8 @@ async def bulk_validate_csv(payload: BulkCsvRequest):
     required_headers = [
         "title",
         "description",
+    ]
+    optional_headers = [
         "requester_name",
         "requester_email",
         "requester_department",
@@ -870,56 +925,7 @@ async def ingest_knowledge(
         logger.error(f"Knowledge ingestion failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
-# Bulk CSV template for upload
-@app.get("/api/v1/tickets/bulk-template")
-async def bulk_template():
-    """Serve a CSV template with a few sample rows for bulk ticket upload."""
-    try:
-        headers = [
-            "title",
-            "description",
-            "requester_name",
-            "requester_email",
-            "requester_department",
-            "additional_context_json",
-        ]
-        samples = [
-            [
-                "Cannot connect to corporate WiFi",
-                "User reports WiFi authentication failure on office network.",
-                "Jane Doe",
-                "jane@example.com",
-                "Engineering",
-                "{\"location\": \"HQ-3F\", \"device\": \"Windows Laptop\"}",
-            ],
-            [
-                "Outlook crashes when opening attachments",
-                "Outlook app closes unexpectedly whenever user opens PDF attachments.",
-                "John Smith",
-                "john@example.com",
-                "Finance",
-                "{\"affected_app\": \"Outlook 365\"}",
-            ],
-        ]
-        # Build CSV string
-        import io
-        import csv
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(headers)
-        for row in samples:
-            writer.writerow(row)
-        content = buf.getvalue()
-        return JSONResponse(
-            status_code=200,
-            content={
-                "filename": "ticketflow_bulk_template.csv",
-                "content": content,
-            },
-        )
-    except Exception as e:
-        logger.error(f"Template generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Template generation failed: {str(e)}")
+
 
 # Analytics dashboard
 @app.get("/api/v1/analytics/dashboard")
@@ -1098,14 +1104,7 @@ async def get_agent_performance(
 ):
     """Get performance statistics for all agents from database"""
     try:
-        stats = db.get_agent_performance(days=days)
-        return {
-            "classification_accuracy": stats["classification_accuracy"],
-            "priority_accuracy": stats["priority_accuracy"],
-            "solution_success_rate": stats["solution_success_rate"],
-            "total_predictions": stats["total_predictions"],
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        return db.get_agent_performance(days=days)
     except Exception as e:
         logger.error(f"Performance stats retrieval failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get performance stats: {str(e)}")

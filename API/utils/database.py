@@ -584,33 +584,45 @@ class TicketDatabase:
             
             cutoff_date = datetime.utcnow() - timedelta(days=days)
             
-            # Classification agent
+            # Get performance by agent
             cursor.execute("""
                 SELECT 
+                    agent_name,
                     COUNT(*) as total,
                     SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct,
                     AVG(confidence) as avg_confidence
                 FROM agent_performance
-                WHERE agent_name = 'classification'
-                AND actual_value IS NOT NULL
-                AND created_at >= ?
+                WHERE created_at >= ?
+                GROUP BY agent_name
             """, (cutoff_date.isoformat(),))
-            class_row = cursor.fetchone()
             
-            # Priority agent
-            cursor.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct,
-                    AVG(confidence) as avg_confidence
-                FROM agent_performance
-                WHERE agent_name = 'priority'
-                AND actual_value IS NOT NULL
-                AND created_at >= ?
-            """, (cutoff_date.isoformat(),))
-            priority_row = cursor.fetchone()
+            agents = {}
+            total_correct = 0
+            total_predictions = 0
             
-            # Solution agent (assuming 80% success for now)
+            for row in cursor.fetchall():
+                agent_name = row[0]
+                total = row[1]
+                correct = row[2]
+                avg_confidence = row[3] or 0.0
+                
+                # Map internal names to display names if needed, or keep as is
+                # The frontend expects keys like 'classification_agent', 'priority_agent'
+                # Our DB stores 'classification', 'priority'
+                display_name = f"{agent_name}_agent" if not agent_name.endswith('_agent') else agent_name
+                
+                agents[display_name] = {
+                    "total_predictions": total,
+                    "correct_predictions": correct,
+                    "accuracy": round(correct / total, 4) if total > 0 else 0.0,
+                    "avg_confidence": round(avg_confidence, 4)
+                }
+                
+                total_correct += correct
+                total_predictions += total
+            
+            # Add solution agent (mock for now as it's not in agent_performance table yet)
+            # In a real scenario, we'd track solution acceptance
             cursor.execute("""
                 SELECT COUNT(DISTINCT ticket_id) as total
                 FROM ticket_solutions
@@ -618,22 +630,22 @@ class TicketDatabase:
             """, (cutoff_date.isoformat(),))
             solution_count = cursor.fetchone()[0]
             
-            # Total predictions made (regardless of whether feedback was provided)
-            cursor.execute(
-                """
-                SELECT COUNT(*) FROM agent_performance
-                WHERE created_at >= ?
-                """,
-                (cutoff_date.isoformat(),),
-            )
-            total_logged_predictions = cursor.fetchone()[0]
+            if solution_count > 0:
+                # Mocking 85% accuracy for solution agent for now
+                correct_solutions = int(solution_count * 0.85)
+                agents["solution_agent"] = {
+                    "total_predictions": solution_count,
+                    "correct_predictions": correct_solutions,
+                    "accuracy": 0.85,
+                    "avg_confidence": 0.88
+                }
+                total_predictions += solution_count
+                total_correct += correct_solutions
+
+            overall_accuracy = round(total_correct / total_predictions, 4) if total_predictions > 0 else 0.0
 
             return {
-                "classification_accuracy": round((class_row[1] / class_row[0]) if class_row[0] > 0 else 0.94, 2),
-                "classification_confidence": round(class_row[2] or 0.88, 2),
-                "priority_accuracy": round((priority_row[1] / priority_row[0]) if priority_row[0] > 0 else 0.91, 2),
-                "priority_confidence": round(priority_row[2] or 0.85, 2),
-                "solution_success_rate": 0.89,  # Mock for now
-                # Show total predictions as all logged predictions + solution recommendations observed
-                "total_predictions": total_logged_predictions + solution_count,
+                "agents": agents,
+                "overall_accuracy": overall_accuracy,
+                "last_updated": datetime.utcnow().isoformat()
             }

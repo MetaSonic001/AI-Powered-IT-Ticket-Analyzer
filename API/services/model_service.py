@@ -329,12 +329,8 @@ class ModelService:
                                 "reasoning": f"Ollama classification: {predicted_category} (matched {category})"
                             }
                     
-                    # Default to first category if no match
-                    return {
-                        "category": categories[0] if categories else "General Support",
-                        "confidence": 0.5,
-                        "reasoning": f"Ollama fallback: {predicted_category}"
-                    }
+                    # If no match found, raise exception to trigger fallback
+                    raise ValueError(f"Ollama response '{predicted_category}' did not match any valid category")
                 else:
                     raise Exception(f"Ollama API error: {response.status}")
     
@@ -375,11 +371,8 @@ class ModelService:
                         "reasoning": f"Groq classification: {predicted_category} (matched {category})"
                     }
             
-            return {
-                "category": categories[0] if categories else "General Support",
-                "confidence": 0.6,
-                "reasoning": f"Groq fallback: {predicted_category}"
-            }
+            # If no match found, raise exception to trigger fallback
+            raise ValueError(f"Groq response '{predicted_category}' did not match any valid category")
             
         except Exception as e:
             raise Exception(f"Groq classification error: {str(e)}")
@@ -415,11 +408,8 @@ class ModelService:
                         "reasoning": f"Gemini classification: {predicted_category} (matched {category})"
                     }
             
-            return {
-                "category": categories[0] if categories else "General Support",
-                "confidence": 0.6,
-                "reasoning": f"Gemini fallback: {predicted_category}"
-            }
+            # If no match found, raise exception to trigger fallback
+            raise ValueError(f"Gemini response '{predicted_category}' did not match any valid category")
             
         except Exception as e:
             raise Exception(f"Gemini classification error: {str(e)}")
@@ -607,15 +597,22 @@ class ModelService:
         """Get status of all models"""
         status = {
             "initialized": self.initialized,
+            "primary_provider": self.settings.primary_llm_provider,
+            "fallback_chain": self.settings.enabled_llm_providers,
             "providers": {}
         }
         
         # Check each provider
         for provider in ['ollama', 'huggingface', 'groq', 'gemini']:
             if provider in self.clients:
+                client = self.clients[provider]
+                models = []
+                if isinstance(client, dict):
+                    models = client.get('available_models', [])
+                
                 status["providers"][provider] = {
                     "available": True,
-                    "models": self.clients[provider].get('available_models', [])
+                    "models": models
                 }
             else:
                 status["providers"][provider] = {"available": False}

@@ -711,8 +711,14 @@ class WorkflowManager:
             # Plain-English summary and action items
             summary = "; ".join(s.get("title", "") for s in solutions[:2])
             action_items = []
-            for s in solutions:
-                action_items.extend(s.get("steps", [])[:2])
+            for i, s in enumerate(solutions):
+                steps = s.get("steps", [])[:2]
+                for step in steps:
+                    action_items.append({
+                        "action": step,
+                        "priority": "High" if i == 0 else "Medium",
+                        "urgency": "Immediate" if i == 0 else "As needed"
+                    })
             processing_time = (time.time() - start_time) * 1000
             return {
                 "recommended_solutions": solutions,

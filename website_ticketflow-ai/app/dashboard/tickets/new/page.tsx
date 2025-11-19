@@ -1,18 +1,30 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Bot, ArrowLeft, Sparkles, Brain, Zap, Upload, X, CheckCircle, Clock, AlertTriangle } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Bot, ArrowLeft, Sparkles, Brain, Zap, Upload, X,
+  CheckCircle2, Clock, AlertTriangle, FileText, Loader2,
+  Save, ChevronRight
+} from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { Progress } from "@/components/ui/progress"
+import { toast } from "sonner"
 
 export default function NewTicketPage() {
   const [user, setUser] = useState<any>(null)
@@ -24,11 +36,16 @@ export default function NewTicketPage() {
     assignee: "",
     tags: "",
   })
+
+  // UI States
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [aiAnalysis, setAiAnalysis] = useState<any>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
+  const [analysisProgress, setAnalysisProgress] = useState(0)
+
   const router = useRouter()
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     const userData = localStorage.getItem("ticketflow_user")
@@ -42,43 +59,80 @@ export default function NewTicketPage() {
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
 
-    // Trigger AI analysis when title and description are filled
-    if ((field === "title" || field === "description") && formData.title && formData.description) {
-      triggerAIAnalysis()
+    // Debounce AI analysis trigger
+    if ((field === "title" || field === "description") && value.length > 10) {
+      const timeoutId = setTimeout(() => triggerAIAnalysis(field === "title" ? value : formData.title, field === "description" ? value : formData.description), 1000)
+      return () => clearTimeout(timeoutId)
     }
   }
 
-  const triggerAIAnalysis = () => {
-    if (!formData.title || !formData.description) return
+  const triggerAIAnalysis = async (currentTitle?: string, currentDescription?: string) => {
+    const title = currentTitle || formData.title
+    const description = currentDescription || formData.description
+
+    if (!title || !description || description.length < 10) return
 
     setIsAnalyzing(true)
+    setAnalysisProgress(10)
 
-    // Simulate AI analysis
-    setTimeout(() => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+      // 1. Parallel calls for classification and priority
+      const [classRes, prioRes, searchRes] = await Promise.all([
+        fetch(`${API_URL}/api/v1/tickets/classify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description })
+        }),
+        fetch(`${API_URL}/api/v1/tickets/predict-priority`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description })
+        }),
+        fetch(`${API_URL}/api/v1/solutions/search?q=${encodeURIComponent(title + " " + description)}&limit=3`)
+      ])
+
+      setAnalysisProgress(60)
+
+      const classData = await classRes.json()
+      const prioData = await prioRes.json()
+      const searchData = await searchRes.json()
+
+      setAnalysisProgress(90)
+
       const analysis = {
-        suggestedCategory: "Network",
-        suggestedPriority: "High",
-        confidence: 87,
-        similarTickets: [
-          { id: "TF-2023-892", title: "Network connectivity issues", similarity: 94 },
-          { id: "TF-2024-045", title: "Building A network problems", similarity: 78 },
-        ],
-        estimatedResolution: "2.5 hours",
-        suggestedAssignee: "John Smith",
-        suggestedTags: ["network", "connectivity", "infrastructure"],
+        suggestedCategory: classData.classification?.category || "General",
+        suggestedPriority: prioData.priority || "Medium",
+        confidence: Math.round((classData.classification?.confidence || 0) * 100),
+        similarTickets: (searchData.results || []).map((r: any) => ({
+          id: r.id, // KB docs might not have ticket-like IDs, but we use what we have
+          title: r.metadata?.title || "Related Article",
+          similarity: Math.round((r.score || 0) * 100)
+        })),
+        estimatedResolution: `${prioData.estimated_resolution_hours || 2} hours`,
+        suggestedAssignee: "AI Auto-Assign", // Not provided by these endpoints
+        suggestedTags: [classData.classification?.subcategory, prioData.priority].filter(Boolean),
+        sentiment: "Neutral" // Not provided
       }
-      setAiAnalysis(analysis)
-      setIsAnalyzing(false)
 
-      // Auto-fill suggestions
+      setAiAnalysis(analysis)
+
+      // Only auto-fill if fields are empty
       setFormData((prev) => ({
         ...prev,
-        category: analysis.suggestedCategory,
-        priority: analysis.suggestedPriority,
-        assignee: analysis.suggestedAssignee,
-        tags: analysis.suggestedTags.join(", "),
+        category: prev.category || analysis.suggestedCategory,
+        priority: prev.priority || analysis.suggestedPriority,
+        tags: prev.tags || analysis.suggestedTags.join(", "),
       }))
-    }, 2000)
+
+    } catch (error) {
+      console.error("AI Analysis failed:", error)
+      // Don't show error toast for background analysis to avoid annoyance
+    } finally {
+      setAnalysisProgress(100)
+      setIsAnalyzing(false)
+    }
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,307 +148,375 @@ export default function NewTicketPage() {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate ticket creation
-    setTimeout(() => {
-      const ticketId = `TF-2024-${Math.floor(Math.random() * 1000)
-        .toString()
-        .padStart(3, "0")}`
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+      const payload = {
+        title: formData.title,
+        description: formData.description,
+        requester_info: {
+          name: user.name || "Unknown User",
+          email: user.email || "unknown@example.com",
+          department: user.department || "General"
+        },
+        additional_context: {
+          category: formData.category,
+          priority: formData.priority,
+          tags: formData.tags.split(",").map(t => t.trim()).filter(Boolean)
+        }
+      }
+
+      const response = await fetch(`${API_URL}/api/v1/tickets/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) throw new Error('Failed to submit ticket')
+
+      const result = await response.json()
+      const ticketId = result.ticket_id || result.ticket_info?.ticket_id // Handle potential response variations
+
+      toast.success("Ticket created successfully")
       router.push(`/dashboard/tickets/${ticketId}?created=true`)
-    }, 1500)
+
+    } catch (error) {
+      console.error("Submission failed:", error)
+      toast.error("Failed to create ticket. Please try again.")
+      setIsSubmitting(false)
+    }
   }
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Bot className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    )
-  }
+  if (!user) return null
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Top Navigation */}
-      <nav className="bg-background border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/dashboard"
-                className="flex items-center space-x-2 text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back to Dashboard</span>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary">
-                <Sparkles className="w-3 h-3 mr-1" />
-                AI-Powered
-              </Badge>
-            </div>
+    <div className="min-h-screen bg-background text-foreground relative selection:bg-primary/20">
+      {/* Background Texture */}
+      <div className="fixed inset-0 -z-50 h-full w-full bg-background bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]" />
+
+      {/* Navbar */}
+      <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => router.back()} className="rounded-full h-8 w-8 p-0">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <span className="font-semibold text-sm flex items-center text-muted-foreground">
+              Tickets <ChevronRight className="w-4 h-4 mx-1" /> New Ticket
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground hidden sm:inline-block">
+              <span className="w-2 h-2 bg-green-500 rounded-full inline-block mr-2 animate-pulse"></span>
+              AI Agent Online
+            </span>
+            <Button variant="outline" size="sm" disabled={isSubmitting}>Save Draft</Button>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Create New Ticket</h1>
-          <p className="text-muted-foreground">
-            Our AI will analyze your ticket and provide smart suggestions as you type.
-          </p>
-        </div>
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Form */}
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Ticket Details</CardTitle>
-                <CardDescription>
-                  Provide as much detail as possible for better AI analysis and faster resolution.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
+          {/* LEFT COLUMN: FORM */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="lg:col-span-8 space-y-6"
+          >
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight mb-2">Submit a Request</h1>
+              <p className="text-muted-foreground text-lg">Describe your issue and let our AI categorize it for you.</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-8">
+              {/* Section 1: Details */}
+              <Card className="border-border/50 shadow-sm">
+                <CardContent className="p-6 space-y-6">
                   <div className="space-y-2">
-                    <Label htmlFor="title">Title *</Label>
+                    <Label htmlFor="title" className="text-base font-medium">Subject</Label>
                     <Input
                       id="title"
-                      placeholder="Brief description of the issue"
+                      placeholder="e.g. VPN connection failing on macOS"
+                      className="text-lg h-12 bg-muted/20"
                       value={formData.title}
                       onChange={(e) => handleInputChange("title", e.target.value)}
+                      autoFocus
                       required
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="description">Description *</Label>
-                    <Textarea
-                      id="description"
-                      placeholder="Detailed description of the issue, including steps to reproduce, error messages, and any troubleshooting already attempted..."
-                      value={formData.description}
-                      onChange={(e) => handleInputChange("description", e.target.value)}
-                      rows={6}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="category">Category</Label>
-                      <Select value={formData.category} onValueChange={(value) => handleInputChange("category", value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Network">Network</SelectItem>
-                          <SelectItem value="Software">Software</SelectItem>
-                          <SelectItem value="Hardware">Hardware</SelectItem>
-                          <SelectItem value="Security">Security</SelectItem>
-                          <SelectItem value="Access">Access & Permissions</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="priority">Priority</Label>
-                      <Select value={formData.priority} onValueChange={(value) => handleInputChange("priority", value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select priority" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Critical">Critical</SelectItem>
-                          <SelectItem value="High">High</SelectItem>
-                          <SelectItem value="Medium">Medium</SelectItem>
-                          <SelectItem value="Low">Low</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <Label htmlFor="description" className="text-base font-medium">Description</Label>
+                    <div className="relative">
+                      <Textarea
+                        id="description"
+                        ref={descriptionRef}
+                        placeholder="Please describe the issue in detail..."
+                        className="min-h-[250px] resize-y bg-muted/20 text-base leading-relaxed p-4"
+                        value={formData.description}
+                        onChange={(e) => handleInputChange("description", e.target.value)}
+                        required
+                      />
+                      {/* Floating AI Hint */}
+                      <AnimatePresence>
+                        {!formData.description && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute top-4 right-4 pointer-events-none"
+                          >
+                            <Badge variant="outline" className="bg-background/80 backdrop-blur text-muted-foreground font-normal">
+                              <Sparkles className="w-3 h-3 mr-2 text-primary" />
+                              AI is ready to analyze
+                            </Badge>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
 
+              {/* Section 2: Classification */}
+              <Card className="border-border/50 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg">Classification</CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 pt-0 grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="assignee">Preferred Assignee (Optional)</Label>
-                    <Select value={formData.assignee} onValueChange={(value) => handleInputChange("assignee", value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Auto-assign based on expertise" />
+                    <Label>Category</Label>
+                    <Select value={formData.category} onValueChange={(v) => handleInputChange("category", v)}>
+                      <SelectTrigger className="h-11 bg-muted/20">
+                        <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="John Smith">John Smith (Network Specialist)</SelectItem>
-                        <SelectItem value="Sarah Johnson">Sarah Johnson (Software Expert)</SelectItem>
-                        <SelectItem value="Mike Davis">Mike Davis (Hardware Technician)</SelectItem>
-                        <SelectItem value="Emily Chen">Emily Chen (Security Analyst)</SelectItem>
+                        {["Network", "Software", "Hardware", "Access", "Security"].map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="tags">Tags (Optional)</Label>
-                    <Input
-                      id="tags"
-                      placeholder="Comma-separated tags (e.g., urgent, building-a, printer)"
-                      value={formData.tags}
-                      onChange={(e) => handleInputChange("tags", e.target.value)}
-                    />
+                    <Label>Urgency</Label>
+                    <Select value={formData.priority} onValueChange={(v) => handleInputChange("priority", v)}>
+                      <SelectTrigger className="h-11 bg-muted/20">
+                        <SelectValue placeholder="Select urgency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Low">Low - Can wait</SelectItem>
+                        <SelectItem value="Medium">Medium - Business impacted</SelectItem>
+                        <SelectItem value="High">High - System down</SelectItem>
+                        <SelectItem value="Critical">Critical - Organization halted</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  {/* File Attachments */}
-                  <div className="space-y-2">
-                    <Label>Attachments</Label>
-                    <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-                      <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground mb-2">Drag and drop files here, or click to browse</p>
-                      <input
-                        type="file"
-                        multiple
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        id="file-upload"
-                        accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt"
+                  <div className="md:col-span-2 space-y-2">
+                    <Label>Tags</Label>
+                    <div className="relative">
+                      <FileText className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        className="pl-10 h-11 bg-muted/20"
+                        placeholder="e.g. wifi, floor-3, macbook (comma separated)"
+                        value={formData.tags}
+                        onChange={(e) => handleInputChange("tags", e.target.value)}
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => document.getElementById("file-upload")?.click()}
-                      >
-                        Choose Files
-                      </Button>
-                    </div>
-
-                    {attachments.length > 0 && (
-                      <div className="space-y-2">
-                        {attachments.map((file, index) => (
-                          <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
-                            <span className="text-sm">{file.name}</span>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => removeAttachment(index)}>
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex space-x-4">
-                    <Button type="submit" disabled={isSubmitting || !formData.title || !formData.description}>
-                      {isSubmitting ? "Creating Ticket..." : "Create Ticket"}
-                    </Button>
-                    <Button type="button" variant="outline" onClick={() => router.push("/dashboard")}>
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* AI Analysis Sidebar */}
-          <div className="space-y-6">
-            {/* AI Analysis */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Brain className="w-5 h-5 text-primary" />
-                  <span>AI Analysis</span>
-                </CardTitle>
-                <CardDescription>Real-time analysis and suggestions based on your ticket content</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isAnalyzing ? (
-                  <div className="text-center py-8">
-                    <Bot className="w-8 h-8 text-primary mx-auto mb-2 animate-pulse" />
-                    <p className="text-sm text-muted-foreground">Analyzing ticket content...</p>
-                  </div>
-                ) : aiAnalysis ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Analysis Confidence</span>
-                      <Badge variant="secondary">{aiAnalysis.confidence}%</Badge>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Suggested Category</p>
-                        <p className="text-sm">{aiAnalysis.suggestedCategory}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Suggested Priority</p>
-                        <Badge variant={aiAnalysis.suggestedPriority === "High" ? "destructive" : "default"}>
-                          {aiAnalysis.suggestedPriority}
-                        </Badge>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Est. Resolution Time</p>
-                        <div className="flex items-center space-x-1">
-                          <Clock className="w-3 h-3" />
-                          <span className="text-sm">{aiAnalysis.estimatedResolution}</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Zap className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Start typing to get AI-powered suggestions</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Similar Tickets */}
-            {aiAnalysis?.similarTickets && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Similar Tickets</CardTitle>
-                  <CardDescription>Previously resolved tickets with similar issues</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {aiAnalysis.similarTickets.map((ticket: any, index: number) => (
-                    <div key={index} className="p-3 border border-border rounded-lg">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium">{ticket.id}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {ticket.similarity}% match
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{ticket.title}</p>
-                    </div>
-                  ))}
                 </CardContent>
               </Card>
-            )}
 
-            {/* Tips */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Tips for Better Results</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
-                  <p className="text-sm">Include specific error messages</p>
+              {/* Section 3: Attachments */}
+              <div className="space-y-4">
+                <Label className="text-lg">Attachments</Label>
+                <div
+                  className="border-2 border-dashed border-muted-foreground/25 rounded-xl p-10 text-center hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5"
+                  onClick={() => document.getElementById("file-upload")?.click()}
+                >
+                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Upload className="w-6 h-6 text-primary" />
+                  </div>
+                  <h3 className="font-medium text-foreground">Click to upload or drag and drop</h3>
+                  <p className="text-sm text-muted-foreground mt-1">SVG, PNG, JPG or PDF (max. 10MB)</p>
+                  <input
+                    id="file-upload"
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
                 </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
-                  <p className="text-sm">Mention affected systems or locations</p>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <AnimatePresence>
+                    {attachments.map((file, index) => (
+                      <motion.div
+                        key={`${file.name}-${index}`}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="flex items-center justify-between p-3 bg-card border rounded-lg shadow-sm"
+                      >
+                        <div className="flex items-center truncate">
+                          <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded flex items-center justify-center mr-3 text-blue-600">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm truncate max-w-[100px]">{file.name}</span>
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAttachment(index)}>
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
-                  <p className="text-sm">Describe steps already attempted</p>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <Button type="submit" size="lg" className="w-full md:w-auto px-8" disabled={isSubmitting || !formData.title}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Submit Ticket
+                </Button>
+              </div>
+            </form>
+          </motion.div>
+
+          {/* RIGHT COLUMN: STICKY AI SIDEBAR */}
+          <div className="lg:col-span-4">
+            <div className="sticky top-24 space-y-6">
+
+              {/* AI Copilot Card */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="rounded-xl border border-primary/20 bg-gradient-to-b from-primary/5 to-background shadow-lg overflow-hidden"
+              >
+                <div className="p-4 border-b border-primary/10 bg-primary/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-primary font-semibold">
+                    <Bot className="w-5 h-5" />
+                    Ticket Copilot
+                  </div>
+                  {isAnalyzing && <span className="text-xs text-muted-foreground animate-pulse">Thinking...</span>}
                 </div>
-                <div className="flex items-start space-x-2">
-                  <AlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5" />
-                  <p className="text-sm">Attach screenshots or logs when relevant</p>
+
+                <div className="p-5 space-y-6">
+                  {/* Empty State */}
+                  {!isAnalyzing && !aiAnalysis && (
+                    <div className="text-center py-8 px-4">
+                      <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Zap className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Start typing your description. I'll automatically analyze urgency, categorize the issue, and find similar tickets.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Loading State */}
+                  {isAnalyzing && (
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Analyzing context...</span>
+                          <span>{analysisProgress}%</span>
+                        </div>
+                        <Progress value={analysisProgress} className="h-1.5" />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-4 bg-muted/50 rounded w-3/4 animate-pulse" />
+                        <div className="h-4 bg-muted/50 rounded w-1/2 animate-pulse" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Results State */}
+                  {aiAnalysis && !isAnalyzing && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="space-y-5"
+                    >
+                      {/* Confidence Score */}
+                      <div className="flex items-center justify-between bg-background/50 p-3 rounded-lg border">
+                        <span className="text-sm text-muted-foreground">AI Confidence</span>
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-24 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-green-500" style={{ width: `${aiAnalysis.confidence}%` }} />
+                          </div>
+                          <span className="text-sm font-bold">{aiAnalysis.confidence}%</span>
+                        </div>
+                      </div>
+
+                      {/* Predictions */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 rounded-lg bg-background border">
+                          <div className="text-xs text-muted-foreground mb-1">Suggestion</div>
+                          <div className="font-semibold text-sm">{aiAnalysis.suggestedCategory}</div>
+                        </div>
+                        <div className="p-3 rounded-lg bg-background border">
+                          <div className="text-xs text-muted-foreground mb-1">Priority</div>
+                          <Badge variant={aiAnalysis.suggestedPriority === 'High' ? 'destructive' : 'default'} className="text-xs">
+                            {aiAnalysis.suggestedPriority}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Time Estimate */}
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30">
+                        <Clock className="w-4 h-4 text-blue-600 mt-0.5" />
+                        <div>
+                          <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                            Est. Resolution: {aiAnalysis.estimatedResolution}
+                          </div>
+                          <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                            Based on 50+ similar historical tickets.
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Similar Tickets */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Similar Issues Found</h4>
+                        <div className="space-y-2">
+                          {aiAnalysis.similarTickets.map((ticket: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between p-2.5 rounded-md hover:bg-muted/50 transition-colors border border-transparent hover:border-border cursor-pointer group">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground group-hover:bg-primary transition-colors" />
+                                <span className="text-sm truncate">{ticket.title}</span>
+                              </div>
+                              <span className="text-xs font-mono text-muted-foreground">{ticket.similarity}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
+
+                {/* Footer */}
+                <div className="p-3 bg-muted/20 border-t text-xs text-center text-muted-foreground">
+                  Powered by TicketFlow LLM-v4
+                </div>
+              </motion.div>
+
+              {/* Helper Box */}
+              <div className="p-4 rounded-xl border bg-card/50 text-sm space-y-2">
+                <div className="font-medium flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  Pro Tip
+                </div>
+                <p className="text-muted-foreground leading-relaxed">
+                  Including error codes (e.g. "Error 503") and screenshots increases auto-resolution success by 40%.
+                </p>
+              </div>
+            </div>
           </div>
+
         </div>
-      </div>
+      </main>
     </div>
   )
 }

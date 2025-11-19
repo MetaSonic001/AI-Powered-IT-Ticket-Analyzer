@@ -180,12 +180,30 @@ export interface DashboardMetrics {
   avg_processing_time: number;
   classification_accuracy: number;
   knowledge_base_size: number;
-  categories: Record<string, number>;
-  priorities: Record<string, number>;
-  trends: Array<{
+  category_breakdown: Array<{
+    category: string;
+    count: number;
+    avg_resolution_hours: number;
+    priorities: Record<string, number>;
+  }>;
+  priority_breakdown: Array<{
+    priority: string;
+    count: number;
+    avg_resolution_hours: number;
+    categories: Record<string, number>;
+  }>;
+  trend_data: Array<{
     date: string;
     count: number;
-    avg_resolution_time?: number;
+    avg_resolution_hours?: number;
+  }>;
+  recent_tickets: Array<{
+    ticket_id: string;
+    title: string;
+    category: string;
+    priority: string;
+    status: string;
+    created_at: string;
   }>;
 }
 
@@ -232,22 +250,26 @@ export interface HealthCheck {
 }
 
 export interface ModelStatus {
-  groq: {
-    available: boolean;
-    model: string;
-  };
-  gemini: {
-    available: boolean;
-    model: string;
-  };
-  ollama: {
-    available: boolean;
-    models: string[];
-  };
-  huggingface: {
-    available: boolean;
-    models: Record<string, string>;
-  };
+  initialized: boolean;
   primary_provider: string;
   fallback_chain: string[];
+  providers: {
+    groq?: {
+      available: boolean;
+      model?: string;
+    };
+    gemini?: {
+      available: boolean;
+      model?: string;
+    };
+    ollama?: {
+      available: boolean;
+      models?: string[];
+    };
+    huggingface?: {
+      available: boolean;
+      models?: Record<string, string>;
+    };
+    [key: string]: any;
+  };
 }
