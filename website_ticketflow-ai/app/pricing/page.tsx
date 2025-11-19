@@ -5,15 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Bot, CheckCircle, X, Star } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export default function PricingPage() {
-  const handleTrialClick = () => {
-    window.location.href = "/signup"
-  }
+  const router = useRouter()
+  const handleTrialClick = () => router.push("/signup")
 
-  const handleContactClick = () => {
-    window.location.href = "/contact"
-  }
+  const handleContactClick = () => router.push("/contact")
 
   return (
     <div className="min-h-screen bg-background">

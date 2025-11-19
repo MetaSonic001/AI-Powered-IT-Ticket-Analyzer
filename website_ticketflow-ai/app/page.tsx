@@ -326,19 +326,21 @@ export default function HomePage() {
           </div>
 
           <div className="hidden md:flex items-center space-x-8">
-            {["Features", "Solutions", "Pricing"].map((item) => (
-              <Link key={item} href={`#${item.toLowerCase().replace(/\s/g, '-')}`} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                {item}
-              </Link>
-            ))}
+            <Link href="/features" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Features</Link>
+            <Link href="/solutions" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Solutions</Link>
+            <Link href="/pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
           </div>
 
           <div className="hidden md:flex items-center space-x-3">
             <ThemeToggle />
-            <Button variant="ghost" size="sm">Log in</Button>
-            <Button size="sm" className="rounded-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-500 text-white shadow-lg shadow-primary/20">
-              Get Started
-            </Button>
+            <Link href="/login">
+              <Button variant="ghost" size="sm">Log in</Button>
+            </Link>
+            <Link href="/signup">
+              <Button size="sm" className="rounded-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-500 text-white shadow-lg shadow-primary/20">
+                Get Started
+              </Button>
+            </Link>
           </div>
 
           <div className="md:hidden flex items-center gap-2">
@@ -358,10 +360,11 @@ export default function HomePage() {
               exit={{ opacity: 0, y: -20 }}
               className="absolute top-full left-4 right-4 mt-4 p-4 bg-background/95 backdrop-blur-lg rounded-2xl border shadow-xl flex flex-col gap-4 md:hidden"
             >
-              {["Features", "Solutions", "Pricing", "Login"].map((item) => (
-                <Link key={item} href={`#${item.toLowerCase().replace(/\s/g, '-')}`} className="p-2 font-medium border-b last:border-0 border-border/50">{item}</Link>
-              ))}
-              <Button className="w-full">Get Started</Button>
+              <Link href="/features" className="p-2 font-medium border-b last:border-0 border-border/50">Features</Link>
+              <Link href="/solutions" className="p-2 font-medium border-b last:border-0 border-border/50">Solutions</Link>
+              <Link href="/pricing" className="p-2 font-medium border-b last:border-0 border-border/50">Pricing</Link>
+              <Link href="/login" className="p-2 font-medium border-b last:border-0 border-border/50">Login</Link>
+              <Link href="/signup"><Button className="w-full">Get Started</Button></Link>
             </motion.div>
           )}
         </AnimatePresence>
@@ -410,9 +413,11 @@ export default function HomePage() {
               <motion.div
                 initial="hidden" animate="visible" variants={fadeIn} custom={0.3}
               >
-                <Button size="lg" className="h-14 px-10 text-lg rounded-full shadow-xl shadow-primary/20 bg-primary hover:bg-primary/90 transition-all hover:scale-105">
-                  Automate my Helpdesk <Zap className="w-5 h-5 ml-2" />
-                </Button>
+                <Link href="/signup">
+                  <Button size="lg" className="h-14 px-10 text-lg rounded-full shadow-xl shadow-primary/20 bg-primary hover:bg-primary/90 transition-all hover:scale-105">
+                    Automate my Helpdesk <Zap className="w-5 h-5 ml-2" />
+                  </Button>
+                </Link>
                 <p className="mt-4 text-xs text-muted-foreground font-medium">No credit card required • Cancel anytime</p>
               </motion.div>
             </div>
@@ -770,9 +775,11 @@ export default function HomePage() {
               Join 500+ engineering teams who reclaimed their time. Set up takes 15 minutes.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" className="rounded-full text-lg px-8 h-12 shadow-xl shadow-primary/20 hover:scale-105 transition-transform">
-                Get Started for Free
-              </Button>
+              <Link href="/signup">
+                <Button size="lg" className="rounded-full text-lg px-8 h-12 shadow-xl shadow-primary/20 hover:scale-105 transition-transform">
+                  Get Started for Free
+                </Button>
+              </Link>
               <Button size="lg" variant="outline" className="rounded-full text-lg px-8 h-12 bg-background/50 backdrop-blur">
                 Talk to Sales
               </Button>

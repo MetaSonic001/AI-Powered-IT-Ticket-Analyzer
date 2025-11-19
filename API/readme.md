@@ -1,3 +1,93 @@
+# API — TicketFlow Backend
+
+This folder contains the FastAPI backend for TicketFlow. It provides the ticket analysis engine, model gateway, knowledge access, ingestion, and persistence used by the frontend and automation components.
+
+Purpose
+- Ingest tickets (single or bulk).
+- Classify and prioritize tickets with an LLM pipeline and deterministic fallbacks.
+- Recommend solutions from the knowledge base and heuristics.
+- Track agent performance and provide analytics for the dashboard.
+
+Key components
+- `main.py` — FastAPI app instance with lifespan startup/shutdown. Initializes services and background tasks.
+- `start_api.py` — developer-friendly entrypoint (sets safe local env defaults and chooses reload mode).
+- `agents/` — workflow and orchestrator (LangGraph-backed when available) including `workflow_manager.py`.
+- `services/` — model_service, knowledge_service, model orchestration and data service.
+- `utils/` — helpers (logger, database wrappers, formatters).
+
+Architecture (simple ASCII flow)
+
+Frontend (Next.js)
+  |
+  v
+FastAPI (API)  <--- LangGraph (optional orchestrator: classify -> prioritize -> recommend -> qa)
+  |                \
+  |                 --> ModelService (Groq/Gemini/Ollama/HuggingFace w/ fallback)
+  v
+Persistence: SQLite (tickets, agent_performance)  <---> Knowledge Store (Weaviate or Chroma)
+
+Tech details
+- Python 3.11+
+- FastAPI + uvicorn
+- Optional: LangGraph for multi-agent orchestration
+- Model clients: Groq, Gemini, Ollama, HuggingFace (each optional — code contains fallbacks)
+- Embeddings: HF or Ollama; fallback numeric embedding generator provided
+- DB: SQLite for ticket ledger & analytics; Weaviate container for vector store if configured
+
+Developer run & debug (Windows `cmd.exe`)
+1) Simple local dev (recommended):
+
+```cmd
+cd API
+python start_api.py --reload
+```
+
+2) Direct uvicorn (production-like):
+
+```cmd
+cd API
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+3) Docker compose (full stack with Weaviate & modules):
+
+```cmd
+cd API
+docker compose up --build
+```
+
+Environment variables (examples)
+- USE_DOCKER=false
+- USE_SQLITE=true
+- CHROMA_PERSIST_DIRECTORY=./models/chroma
+- SQLITE_DB_PATH=./data/tickets.db
+- GROQ_API_KEY=...
+- GEMINI_API_KEY=...
+- OLLAMA_HOST=http://localhost:11434
+
+Useful files & endpoints
+- `API/main.py` — read to see startup lifecycle and service wiring
+- `API/start_api.py` — reproducible dev start-up helper
+- Key endpoints (examples):
+  - POST `/api/v1/tickets/analyze`
+  - POST `/api/v1/tickets/bulk-validate`
+  - POST `/api/v1/tickets/bulk-process`
+  - GET  `/api/v1/analytics/dashboard`
+  - GET  `/api/v1/models/status`
+  - GET  `/api/v1/health`
+
+Troubleshooting
+- If a model provider fails to initialize, check console warnings and the environment variables noted above.
+- If LangGraph is not installed, WorkflowManager falls back to `_fallback_analysis` so the API remains functional.
+- For DB issues, check path/permissions for `SQLITE_DB_PATH`.
+
+Testing
+- There are scripts in `API/scripts/` to run small checks; use `test_installation.py` to confirm dependencies.
+
+Contributing
+- Add new model providers in `services/model_service.py` and register them in `core/config.py`.
+
+— end API readme —
 # AI-Powered IT Ticket Analyzer & Auto-Suggester
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)

@@ -20,11 +20,11 @@ import {
   User,
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export default function ResourcesPage() {
-  const handleTrialClick = () => {
-    window.location.href = "/signup"
-  }
+  const router = useRouter()
+  const handleTrialClick = () => router.push("/signup")
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,7 +61,7 @@ export default function ResourcesPage() {
               <Link href="/resources" className="text-primary font-medium">
                 Resources
               </Link>
-              <Button variant="ghost" onClick={() => (window.location.href = "/login")} className="font-medium">
+              <Button variant="ghost" onClick={() => router.push("/login")} className="font-medium">
                 Login
               </Button>
               <Button onClick={handleTrialClick} className="shadow-lg hover:shadow-xl transition-shadow">

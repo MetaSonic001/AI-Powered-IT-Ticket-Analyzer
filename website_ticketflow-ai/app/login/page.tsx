@@ -80,8 +80,8 @@ export default function LoginPage() {
 
     localStorage.setItem("ticketflow_user", JSON.stringify(demoUser))
 
-    // Use window.location.href for immediate redirect
-    window.location.href = "/dashboard?welcome=true"
+  // Use router.push for consistent client navigation
+  router.push("/dashboard?welcome=true")
   }
 
   return (
