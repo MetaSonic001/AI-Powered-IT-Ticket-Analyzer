@@ -32,6 +32,7 @@ from utils.logger import setup_logger
 from utils.ledger_sqlite import SqliteLedger
 from utils.database import TicketDatabase
 from scripts.datasets import ingest_folder, Embedder
+from routers import twilio
 
 # Setup logging
 logger = setup_logger(__name__)
@@ -138,6 +139,8 @@ app = FastAPI(
     redoc_url="/api/redoc",
     lifespan=lifespan
 )
+
+app.include_router(twilio.router)
 
 # CORS middleware
 app.add_middleware(
@@ -690,8 +693,6 @@ async def bulk_validate_csv(payload: BulkCsvRequest):
     required_headers = [
         "title",
         "description",
-    ]
-    optional_headers = [
         "requester_name",
         "requester_email",
         "requester_department",

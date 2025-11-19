@@ -23,6 +23,7 @@ ollama
 
 # External AI APIs (Groq only - no OpenAI)
 groq
+google-genai
 google-generativeai
 
 # Vector Database
@@ -111,3 +112,7 @@ python-decouple
 jupyter
 ipython
 notebook
+
+# Twilio
+twilio
+audioop-lts

@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     gemini_api_key: Optional[str] = Field(default=None)
     gemini_model: str = Field(default="gemini-pro")
     
+    # Twilio Configuration
+    twilio_account_sid: Optional[str] = Field(default=None)
+    twilio_auth_token: Optional[str] = Field(default=None)
+    twilio_phone_number: Optional[str] = Field(default=None)
+    
     # Weaviate Configuration
     weaviate_host: str = Field(default="http://localhost:8080")
     weaviate_api_key: Optional[str] = Field(default=None)

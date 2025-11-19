@@ -162,6 +162,10 @@ class TicketDatabase:
         Create a new ticket in the database
         Returns the ticket_id
         """
+        import uuid
+        if 'ticket_id' not in ticket_data:
+            ticket_data['ticket_id'] = f"TKT-{str(uuid.uuid4())[:8].upper()}"
+            
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
