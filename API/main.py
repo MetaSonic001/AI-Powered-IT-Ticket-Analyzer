@@ -696,7 +696,6 @@ async def bulk_validate_csv(payload: BulkCsvRequest):
         "requester_name",
         "requester_email",
         "requester_department",
-        "additional_context_json",
     ]
 
     try:
@@ -772,6 +771,7 @@ async def bulk_validate_csv(payload: BulkCsvRequest):
         idx_desc = col("description")
         idx_rname = col("requester_name")
         idx_remail = col("requester_email")
+        idx_rdept = col("requester_department")
         idx_rdept = col("requester_department")
         idx_ctx = col("additional_context_json")
 

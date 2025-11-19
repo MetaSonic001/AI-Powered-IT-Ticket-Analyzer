@@ -60,7 +60,7 @@ export default function NewTicketPage() {
     setFormData((prev) => ({ ...prev, [field]: value }))
 
     // Debounce AI analysis trigger
-    if ((field === "title" || field === "description") && value.length > 10) {
+    if ((field === "title" || field === "description") && value.length > 40) {
       const timeoutId = setTimeout(() => triggerAIAnalysis(field === "title" ? value : formData.title, field === "description" ? value : formData.description), 1000)
       return () => clearTimeout(timeoutId)
     }
@@ -106,8 +106,10 @@ export default function NewTicketPage() {
         suggestedPriority: prioData.priority || "Medium",
         confidence: Math.round((classData.classification?.confidence || 0) * 100),
         similarTickets: (searchData.results || []).map((r: any) => ({
-          id: r.id, // KB docs might not have ticket-like IDs, but we use what we have
-          title: r.metadata?.title || "Related Article",
+          id: r.doc_id,
+          title: r.title || "Related Article",
+          snippet: r.content_snippet || "No preview available.",
+          category: r.category || "General",
           similarity: Math.round((r.score || 0) * 100)
         })),
         estimatedResolution: `${prioData.estimated_resolution_hours || 2} hours`,
@@ -477,17 +479,36 @@ export default function NewTicketPage() {
                         </div>
                       </div>
 
-                      {/* Similar Tickets */}
+                      {/* Related Articles */}
                       <div>
-                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Similar Issues Found</h4>
-                        <div className="space-y-2">
-                          {aiAnalysis.similarTickets.map((ticket: any, i: number) => (
-                            <div key={i} className="flex items-center justify-between p-2.5 rounded-md hover:bg-muted/50 transition-colors border border-transparent hover:border-border cursor-pointer group">
-                              <div className="flex items-center gap-2 overflow-hidden">
-                                <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground group-hover:bg-primary transition-colors" />
-                                <span className="text-sm truncate">{ticket.title}</span>
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Related Articles</h4>
+                        <div className="space-y-3">
+                          {aiAnalysis.similarTickets.map((article: any, i: number) => (
+                            <div key={i} className="p-3 rounded-md bg-card border hover:border-primary/50 transition-colors group">
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <span className="text-sm font-medium line-clamp-1 group-hover:text-primary transition-colors">
+                                  {article.title}
+                                </span>
+                                <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0">
+                                  {article.category}
+                                </Badge>
                               </div>
-                              <span className="text-xs font-mono text-muted-foreground">{ticket.similarity}%</span>
+
+                              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                                {article.snippet}
+                              </p>
+
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                  <span className="text-[10px] font-mono text-muted-foreground">
+                                    {article.similarity}% Match
+                                  </span>
+                                </div>
+                                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2">
+                                  View Article
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>

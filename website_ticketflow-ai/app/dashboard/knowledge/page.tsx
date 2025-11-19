@@ -10,8 +10,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Bot, Search, Brain, BookOpen, Star, Clock, Plus, Filter, Eye,
   ThumbsUp, Share2, FileText, Sparkles, TrendingUp, User,
-  ArrowRight, GraduationCap, Laptop, ShieldCheck, Wifi
+  ArrowRight, GraduationCap, Laptop, ShieldCheck, Wifi, X
 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -34,6 +41,7 @@ export default function KnowledgeBasePage() {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [articles, setArticles] = useState<KnowledgeArticle[]>([])
   const [loading, setLoading] = useState(false)
+  const [selectedArticle, setSelectedArticle] = useState<KnowledgeArticle | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -237,7 +245,7 @@ export default function KnowledgeBasePage() {
                 ) : (
                   // Article Cards
                   articles.map((article) => (
-                    <Card key={article.doc_id} className="group hover:shadow-md hover:border-primary/30 transition-all cursor-pointer overflow-hidden border-border/60">
+                    <Card key={article.doc_id} className="group hover:shadow-md hover:border-primary/30 transition-all cursor-pointer overflow-hidden border-border/60" onClick={() => setSelectedArticle(article)}>
                       <CardContent className="p-0">
                         <div className="flex flex-col md:flex-row">
                           {/* Left: Content */}
@@ -289,11 +297,6 @@ export default function KnowledgeBasePage() {
 
             {/* Sidebar */}
             <div className="xl:col-span-3 space-y-6">
-
-              {/* Create New */}
-              <Button className="w-full shadow-lg shadow-primary/20 h-12 text-base">
-                <Plus className="w-5 h-5 mr-2" /> Contribution Request
-              </Button>
 
               {/* Quick Stats */}
               <Card className="bg-muted/30 border-none shadow-inner">
@@ -366,6 +369,61 @@ export default function KnowledgeBasePage() {
           </div>
         </div>
       </div>
+      {/* Article Dialog */}
+      <Dialog open={!!selectedArticle} onOpenChange={(open) => !open && setSelectedArticle(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="outline" className="w-fit">
+                {selectedArticle?.category || "General"}
+              </Badge>
+              {selectedArticle?.score && (
+                <span className="text-xs text-muted-foreground">
+                  {(selectedArticle.score * 100).toFixed(0)}% Match
+                </span>
+              )}
+            </div>
+            <DialogTitle className="text-2xl font-bold">{selectedArticle?.title}</DialogTitle>
+            <DialogDescription>
+              Source: {selectedArticle?.source || "Knowledge Base"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-6 space-y-4">
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              {/* In a real app, this would be rich text or markdown rendering */}
+              {selectedArticle?.content_snippet?.split('\n').map((paragraph, idx) => (
+                <p key={idx} className="mb-4 leading-relaxed">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+
+            {selectedArticle?.metadata?.steps && (
+              <div className="bg-muted/30 p-4 rounded-lg border mt-6">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" /> Recommended Steps
+                </h4>
+                <ul className="space-y-2">
+                  {selectedArticle.metadata.steps.map((step: string, i: number) => (
+                    <li key={i} className="flex gap-2 text-sm">
+                      <span className="font-mono text-muted-foreground shrink-0">{i + 1}.</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
+            <Button variant="outline" onClick={() => setSelectedArticle(null)}>Close</Button>
+            <Button>
+              <ThumbsUp className="w-4 h-4 mr-2" /> Helpful
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

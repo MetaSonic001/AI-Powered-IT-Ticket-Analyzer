@@ -106,9 +106,11 @@ export default function DashboardPage() {
       setLoading(true)
       setError(null)
 
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
       const [dashboardRes, performanceRes] = await Promise.all([
-        fetch("http://localhost:8000/api/v1/analytics/dashboard"),
-        fetch("http://localhost:8000/api/v1/agents/performance")
+        fetch(`${API_URL}/api/v1/analytics/dashboard`),
+        fetch(`${API_URL}/api/v1/agents/performance`)
       ])
 
       if (!dashboardRes.ok) throw new Error(`Analytics API Error: ${dashboardRes.status}`)
@@ -118,7 +120,21 @@ export default function DashboardPage() {
       const performanceData = await performanceRes.json()
 
       setMetrics(dashboardData)
-      setPerformance(performanceData)
+
+      // Map nested API response to flat interface
+      // API returns: { agents: { classification_agent: { accuracy: 0.9 }, ... } }
+      if (performanceData.agents) {
+        setPerformance({
+          classification_accuracy: performanceData.agents.classification_agent?.accuracy || 0,
+          priority_accuracy: performanceData.agents.priority_agent?.accuracy || 0,
+          solution_success_rate: performanceData.agents.solution_agent?.accuracy || 0,
+          total_predictions: Object.values(performanceData.agents).reduce((acc: number, curr: any) => acc + (curr.total_predictions || 0), 0) as number
+        })
+      } else {
+        // Fallback if structure matches old format or is empty
+        setPerformance(performanceData)
+      }
+
     } catch (err: any) {
       console.error("Error fetching dashboard data:", err)
       setError(err.message || "Failed to connect to TicketFlow API")
