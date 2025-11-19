@@ -57,9 +57,19 @@ const navSections: NavSection[] = [
     title: "Tickets",
     items: [
       {
+        title: "All Tickets",
+        href: "/dashboard/tickets",
+        icon: FileText,
+      },
+      {
         title: "Analyze Ticket",
         href: "/dashboard/tickets/analyze",
         icon: Sparkles,
+      },
+      {
+        title: "New Ticket",
+        href: "/dashboard/tickets/new",
+        icon: Target,
       },
       {
         title: "Bulk Upload",
@@ -76,6 +86,11 @@ const navSections: NavSection[] = [
         href: "/dashboard/knowledge",
         icon: Search,
       },
+      {
+        title: "Advanced Search",
+        href: "/dashboard/search",
+        icon: Search,
+      },
     ],
   },
   {
@@ -88,9 +103,8 @@ const navSections: NavSection[] = [
       },
       {
         title: "Reports",
-        href: "/dashboard/analytics/reports",
+        href: "/dashboard/reports",
         icon: FileText,
-        disabled: true,
       },
     ],
   },
@@ -112,6 +126,26 @@ const navSections: NavSection[] = [
         href: "/dashboard/health",
         icon: Activity,
       },
+      {
+        title: "Integrations",
+        href: "/dashboard/integrations",
+        icon: Server,
+      },
+    ],
+  },
+  {
+    title: "Organization",
+    items: [
+      {
+        title: "Team",
+        href: "/dashboard/team",
+        icon: Users,
+      },
+      {
+        title: "Settings",
+        href: "/dashboard/settings",
+        icon: Settings,
+      },
     ],
   },
 ]
@@ -132,7 +166,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
+      <div className="flex-1 min-h-0">
+        <ScrollArea className="h-full flex-1 px-3 py-4">
         <div className="space-y-6">
           {navSections.map((section) => (
             <div key={section.title}>
@@ -183,7 +218,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </div>
           ))}
         </div>
-      </ScrollArea>
+        </ScrollArea>
+      </div>
 
       {/* Footer */}
       <div className="border-t p-4">
@@ -203,7 +239,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
 export function Sidebar() {
   return (
-    <aside className="hidden lg:flex h-screen w-64 flex-col border-r bg-background">
+    <aside className="hidden lg:flex h-screen max-h-screen w-64 flex-col border-r bg-background overflow-hidden">
       <SidebarContent />
     </aside>
   )
@@ -220,7 +256,7 @@ export function MobileSidebar() {
           <span className="sr-only">Toggle menu</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-64 p-0">
+      <SheetContent side="left" className="w-full max-w-xs sm:w-64 p-0">
         <SidebarContent onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>

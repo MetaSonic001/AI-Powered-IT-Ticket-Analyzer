@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 
 import { Button } from "@/components/ui/button"
@@ -44,6 +45,7 @@ import {
   PolarAngleAxis
 } from "recharts"
 import type { DashboardMetrics } from "@/lib/types"
+import { analyticsMock } from "@/lib/mockTickets"
 
 // --- Theme & Config ---
 const COLORS = {
@@ -81,12 +83,21 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [timeRange, setTimeRange] = useState("30d")
+  const router = useRouter()
 
   const fetchDashboard = async () => {
     try {
       setLoading(true)
       setError(null)
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const useMocks = process.env.NEXT_PUBLIC_USE_MOCKS === '1'
+
+      if (useMocks) {
+        // Use seeded demo data in development
+        setData(analyticsMock as DashboardMetrics)
+        setLoading(false)
+        return
+      }
 
       // Artificial delay for skeleton smoothness
       await new Promise(resolve => setTimeout(resolve, 600));
@@ -100,6 +111,8 @@ export default function AnalyticsPage() {
       const message = err instanceof Error ? err.message : 'Failed to load dashboard'
       setError(message)
       toast.error('Failed to connect to analytics service')
+      // Fallback to seeded demo data so UI remains functional offline
+      setData(analyticsMock as DashboardMetrics)
     } finally {
       setLoading(false)
     }
@@ -214,6 +227,34 @@ export default function AnalyticsPage() {
               Export Report
             </Button>
           </div>
+        </div>
+
+        {/* Recent Tickets (seeded demo data) */}
+        <div className="mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Recent Tickets</CardTitle>
+                  <CardDescription>Quick access to recently created tickets</CardDescription>
+                </div>
+                <Badge variant="outline" className="font-mono text-xs">{analyticsMock.recent_tickets.length} items</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {analyticsMock.recent_tickets.map((t: any) => (
+                  <div key={t.ticket_id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer" onClick={() => router.push(`/dashboard/tickets/${t.ticket_id}`)}>
+                    <div>
+                      <div className="font-medium">{t.title}</div>
+                      <div className="text-xs text-muted-foreground">{t.category} • {t.priority}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString()}</div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* KPI Grid */}

@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import type { ModelStatus } from "@/lib/types"
+import { modelsMock } from "@/lib/mockTickets"
 
 // --- Types & Helpers ---
 type ProviderWithError = {
@@ -36,6 +37,14 @@ export default function ModelsPage() {
       setLoading(true)
       setError(null)
 
+      const useMocks = process.env.NEXT_PUBLIC_USE_MOCKS === '1'
+      if (useMocks) {
+        setData(modelsMock as ModelStatus)
+        setLastUpdated(new Date())
+        setLoading(false)
+        return
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       const response = await fetch(`${API_URL}/api/v1/models/status`)
       if (!response.ok) throw new Error('Failed to fetch model status')
@@ -47,6 +56,8 @@ export default function ModelsPage() {
       const message = err instanceof Error ? err.message : 'Failed to load status'
       setError(message)
       toast.error(message)
+      // Fallback to seeded mock so the UI still shows demo status
+      setData(modelsMock as ModelStatus)
     } finally {
       setLoading(false)
     }

@@ -1,6 +1,7 @@
 "use client"
 
 import { Input } from "@/components/ui/input"
+import { DashboardLayout } from "@/components/dashboard-layout"
 
 import { Label } from "@/components/ui/label"
 
@@ -72,104 +73,136 @@ export default function ReportsPage() {
   ]
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Reports & Analytics</h2>
-        <div className="flex items-center space-x-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm">
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                {date ? format(date, "PPP") : "Select date"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
-            </PopoverContent>
-          </Popover>
-          <Button variant="outline" size="sm">
-            <Filter className="h-4 w-4 mr-2" />
-            Filter
-          </Button>
-          <Button variant="outline" size="sm">
-            <Share className="h-4 w-4 mr-2" />
-            Share
-          </Button>
-          <Button size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+    <DashboardLayout>
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <div className="flex items-center justify-between space-y-2">
+          <h2 className="text-3xl font-bold tracking-tight">Reports Center</h2>
+          <div className="flex items-center space-x-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <CalendarIcon className="h-4 w-4 mr-2" />
+                  {date ? format(date, "PPP") : "Select date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" size="sm">
+              <Filter className="h-4 w-4 mr-2" />
+              Filter
+            </Button>
+            <Button variant="outline" size="sm">
+              <Share className="h-4 w-4 mr-2" />
+              Share
+            </Button>
+            <Button size="sm">
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Tickets</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">1,234</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600 flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +12.5%
-              </span>
-              from last month
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Resolution Time</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">4.2h</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600 flex items-center">
-                <TrendingDown className="h-3 w-3 mr-1" />
-                -8.3%
-              </span>
-              from last month
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Customer Satisfaction</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">94.2%</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600 flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +2.1%
-              </span>
-              from last month
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">23</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-red-600 flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +4 from yesterday
-              </span>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        {/* Key Metrics */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Tickets</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">1,234</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-green-600 flex items-center">
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  +12.5%
+                </span>
+                from last month
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Resolution Time</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">4.2h</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-green-600 flex items-center">
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                  -8.3%
+                </span>
+                from last month
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Customer Satisfaction</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">94.2%</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-green-600 flex items-center">
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  +2.1%
+                </span>
+                from last month
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">23</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-red-600 flex items-center">
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  +4 from yesterday
+                </span>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
+        {/* Quick Report Builder (Demo) */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            {/* Existing charts and tabs will appear below */}
+          </div>
+          <div className="lg:col-span-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>Report Builder</CardTitle>
+                <CardDescription>Create a custom report and preview</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Input placeholder="Report name" />
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="summary">Summary</SelectItem>
+                      <SelectItem value="detailed">Detailed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button>Generate Preview</Button>
+                  <div className="mt-4 p-3 bg-muted rounded text-sm text-muted-foreground">Preview will appear here.</div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
@@ -231,7 +264,7 @@ export default function ReportsPage() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }: { name: string; percent: number }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -454,5 +487,6 @@ export default function ReportsPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </DashboardLayout>
   )
 }

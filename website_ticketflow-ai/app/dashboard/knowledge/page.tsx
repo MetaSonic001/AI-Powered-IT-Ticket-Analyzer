@@ -15,6 +15,7 @@ import {
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { knowledgeMock } from "@/lib/mockTickets"
 
 interface KnowledgeArticle {
   doc_id: string
@@ -38,6 +39,17 @@ export default function KnowledgeBasePage() {
   useEffect(() => {
     const userData = localStorage.getItem("ticketflow_user")
     if (!userData) {
+      // In dev/mock mode allow viewing without explicit login
+      if (process.env.NEXT_PUBLIC_USE_MOCKS === "1") {
+        try {
+          const demo = { id: "demo", name: "Demo User", role: "Developer" }
+          localStorage.setItem("ticketflow_user", JSON.stringify(demo))
+          setUser(demo)
+        } catch (e) {
+          console.warn("Could not write demo user to localStorage", e)
+        }
+        return
+      }
       router.push("/login")
       return
     }
@@ -69,7 +81,14 @@ export default function KnowledgeBasePage() {
       setArticles(data.results || [])
     } catch (error) {
       console.error("KB fetch error:", error)
-      toast.error("Failed to load knowledge base articles")
+      // Fall back to local demo dataset when API is unavailable
+      if (process.env.NEXT_PUBLIC_USE_MOCKS === "1") {
+        setArticles(knowledgeMock.articles || [])
+        toast("Using demo knowledge base articles (mock mode)")
+      } else {
+        setArticles([])
+        toast.error("Failed to load knowledge base articles")
+      }
     } finally {
       setLoading(false)
     }
