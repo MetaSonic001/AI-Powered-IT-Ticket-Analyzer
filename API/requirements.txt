@@ -115,4 +115,3 @@ notebook
 
 # Twilio
 twilio
-audioop-lts
